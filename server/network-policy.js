@@ -63,16 +63,26 @@ const isPublicHost = (host) => {
   return true;
 };
 
-const assertPublicHostAllowed = ({ host, studioAccessToken }) => {
+const isPublicBindAllowed = (env = process.env) =>
+  /^(1|true|yes|on)$/i.test(String(env.STUDIO_ALLOW_PUBLIC_HOST ?? "").trim());
+
+const assertPublicHostAllowed = ({ host, studioAccessToken, env = process.env }) => {
   if (!isPublicHost(host)) return;
 
   const token = String(studioAccessToken ?? "").trim();
   if (token) return;
 
+  // Explicit opt-in for platform deploys (Railway/Render/Fly) that terminate
+  // TLS + auth at their own proxy and want the app served openly. This binds a
+  // public interface with NO Studio access gate — only set it when public,
+  // unauthenticated access is intended.
+  if (isPublicBindAllowed(env)) return;
+
   const normalized = normalizeHost(host) || String(host ?? "").trim() || "(unknown)";
   throw new Error(
     `Refusing to bind Studio to public host "${normalized}" without STUDIO_ACCESS_TOKEN. ` +
-      "Set STUDIO_ACCESS_TOKEN or bind HOST to 127.0.0.1/::1/localhost."
+      "Set STUDIO_ACCESS_TOKEN, set STUDIO_ALLOW_PUBLIC_HOST=1 for an intentionally " +
+      "public deploy, or bind HOST to 127.0.0.1/::1/localhost."
   );
 };
 
@@ -80,5 +90,6 @@ module.exports = {
   resolveHosts,
   resolveHost,
   isPublicHost,
+  isPublicBindAllowed,
   assertPublicHostAllowed,
 };

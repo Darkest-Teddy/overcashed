@@ -4,7 +4,9 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { WorldContents } from "./Scene";
 import { SplitScreenRenderer } from "./SplitScreenRenderer";
-import { keys, stepGame, players, playerStations } from "./state";
+import { keys, stepGame, players, playerStations, STATIONS } from "./state";
+import type { Station } from "./state";
+import { useAmbientMusic } from "./useAmbientMusic";
 import {
   gameState,
   submitAnswer,
@@ -12,6 +14,7 @@ import {
   resetGame,
   tickGame,
   drawTicket,
+  missDeskDeadline,
   subscribe,
 } from "./game/gameLogic";
 import type { GameState } from "./game/gameLogic";
@@ -83,6 +86,7 @@ function snap(gs: GameState): GameState {
     p1: { ...gs.p1 },
     p2: { ...gs.p2 },
     wrongDecisions: [...gs.wrongDecisions],
+    missedDeskDeadlines: { ...gs.missedDeskDeadlines },
   };
 }
 
@@ -98,6 +102,15 @@ const TRACKED_KEYS = new Set([
   "w", "a", "s", "d",
   "arrowup", "arrowdown", "arrowleft", "arrowright",
 ]);
+
+type TargetStationIds = [string | null, string | null];
+const DESK_TRAVEL_SECONDS = 10;
+
+function pickStationId(excludedIds: Set<string>): string {
+  const candidates = STATIONS.filter((station) => !excludedIds.has(station.id));
+  const pool = candidates.length > 0 ? candidates : STATIONS;
+  return pool[Math.floor(Math.random() * pool.length)].id;
+}
 
 // ─── Top Bar (HUD) ─────────────────────────────────────────────────────────
 
@@ -178,31 +191,134 @@ function TopBar({ health, time, phase }: { health: number; time: number; phase: 
   );
 }
 
+// ─── Directional Arrow (points toward the assigned desk) ────────────────────
+
+function DeskArrow({
+  playerIndex,
+  color,
+  targetStation,
+  travelSecondsLeft,
+}: {
+  playerIndex: number;
+  color: string;
+  targetStation: Station;
+  travelSecondsLeft: number;
+}) {
+  const p = players[playerIndex];
+  const distance = Math.hypot(p.x - targetStation.x, p.y - targetStation.y);
+  // Angle from player to station (screen coords: +x right, +y down)
+  const angle = Math.atan2(targetStation.y - p.y, targetStation.x - p.x);
+  const deg = (angle * 180) / Math.PI;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
+      {/* Pulsing arrow */}
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: "50%",
+          background: `rgba(${color === "#4f9dff" ? "79,157,255" : "255,122,89"},0.15)`,
+          border: `2px solid ${color}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          animation: "pulse-health 1s ease-in-out infinite",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 32,
+            lineHeight: 1,
+            transform: `rotate(${deg}deg)`,
+            transition: "transform 0.15s ease-out",
+          }}
+        >
+          ➤
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 800,
+          letterSpacing: 1,
+          color: "#fbbf24",
+          textTransform: "uppercase",
+          textAlign: "center",
+          textShadow: "0 0 12px rgba(251,191,36,0.5)",
+        }}
+      >
+        GO TO {targetStation.label}
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.5 }}>
+        Follow your {color === "#4f9dff" ? "blue" : "orange"} marker — {Math.round(distance)} units
+      </div>
+      <div
+        style={{
+          marginTop: 2,
+          padding: "6px 12px",
+          borderRadius: 999,
+          background: travelSecondsLeft <= 3 ? "rgba(239,68,68,0.2)" : "rgba(0,0,0,0.65)",
+          border: `1px solid ${travelSecondsLeft <= 3 ? "#ef4444" : "rgba(255,255,255,0.14)"}`,
+          color: travelSecondsLeft <= 3 ? "#f87171" : "#fff",
+          fontSize: 12,
+          fontWeight: 900,
+          letterSpacing: 1,
+          animation: travelSecondsLeft <= 3 ? "pulse-red 0.8s ease-in-out infinite" : undefined,
+        }}
+      >
+        REACH DESK IN {travelSecondsLeft}s
+      </div>
+    </div>
+  );
+}
+
 // ─── Player HUD Panel ──────────────────────────────────────────────────────
 
 function PlayerHUD({
   player,
+  playerIndex,
   state,
   flashClass,
   approveKey,
   rejectKey,
   moveKeys,
+  confirmKey,
   color,
   side,
   atStation,
   stationLabel,
+  targetStation,
+  travelSecondsLeft,
+  confirmed,
 }: {
   player: "P1" | "P2";
+  playerIndex: number;
   state: GameState["p1"];
   flashClass: string | null;
   approveKey: string;
   rejectKey: string;
   moveKeys: string;
+  confirmKey: string;
   color: string;
   side: "left" | "right";
   atStation: boolean;
   stationLabel: string | null;
+  targetStation: Station | null;
+  travelSecondsLeft: number;
+  confirmed: boolean;
 }) {
+  const roaming = !atStation;
+  const atDeskWaiting = atStation && !confirmed; // at desk, hasn't pressed Q/M yet
+  const atDeskTicketing = atStation && confirmed; // actively reviewing tickets
+
   return (
     <div
       style={{
@@ -219,7 +335,6 @@ function PlayerHUD({
       {/* Flash overlay */}
       {flashClass && (
         <div
-          key={Date.now()}
           style={{
             position: "absolute",
             inset: 0,
@@ -248,12 +363,60 @@ function PlayerHUD({
         </span>
       </div>
 
-      {/* Spacer — 3D scene shows through */}
-      <div style={{ flex: 1 }} />
+      {/* Center area */}
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {roaming && targetStation && (
+          <DeskArrow
+            playerIndex={playerIndex}
+            color={color}
+            targetStation={targetStation}
+            travelSecondsLeft={travelSecondsLeft}
+          />
+        )}
+        {atDeskWaiting && (
+          /* Player is at desk but hasn't pressed Q/M to start reviewing */
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 800,
+                letterSpacing: 1,
+                color: "#fbbf24",
+                textTransform: "uppercase",
+                textAlign: "center",
+                textShadow: "0 0 12px rgba(251,191,36,0.5)",
+              }}
+            >
+              DESK READY
+            </div>
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 12,
+                border: `3px solid ${color}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 32,
+                fontWeight: 900,
+                color,
+                background: "rgba(0,0,0,0.6)",
+                animation: "pulse-health 1s ease-in-out infinite",
+              }}
+            >
+              {confirmKey}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.6, textAlign: "center" }}>
+              Press <span style={{ fontWeight: 800, color: "#fff" }}>{confirmKey}</span> to open this desk&apos;s task
+            </div>
+          </div>
+        )}
+      </div>
 
-      {/* Bottom area: ticket card OR roaming prompt */}
+      {/* Bottom area: ticket card when confirmed at desk, move hint when roaming */}
       <div style={{ padding: "0 16px 8px", display: "flex", justifyContent: "center" }}>
-        {atStation ? (
+        {atDeskTicketing ? (
           <div
             style={{
               maxWidth: 440,
@@ -278,40 +441,34 @@ function PlayerHUD({
               </div>
             )}
           </div>
-        ) : (
+        ) : roaming ? (
           <div
             style={{
-              background: "rgba(0,0,0,0.6)",
+              background: "rgba(0,0,0,0.7)",
               backdropFilter: "blur(4px)",
               borderRadius: 10,
-              padding: "12px 20px",
+              padding: "10px 20px",
               textAlign: "center",
-              border: "1px solid rgba(255,255,255,0.08)",
-              animation: "bob 2s ease-in-out infinite",
+              border: "1px solid rgba(251,191,36,0.3)",
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.7 }}>
-              Walk to a desk to review tickets
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.4, marginTop: 4 }}>
-              Move: {moveKeys}
+            <div style={{ fontSize: 11, opacity: 0.5 }}>
+              Move: <span style={{ fontWeight: 700, opacity: 1, color: "#fff" }}>{moveKeys}</span>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Keybind hints — only show when at station */}
-      {atStation && (
+      {/* Keybind hints — only when actively ticketing */}
+      {atDeskTicketing && (
         <div style={{ display: "flex", justifyContent: "center", gap: 20, padding: "8px 0 14px" }}>
           <KeyHint label={approveKey} action="APPROVE" color="#4ade80" />
           <KeyHint label={rejectKey} action="REJECT" color="#ef4444" />
+          <KeyHint label={confirmKey} action="LEAVE DESK" color="#fbbf24" />
         </div>
       )}
 
-      {/* Movement hint when roaming — show below prompt */}
-      {!atStation && (
-        <div style={{ height: 50 }} />
-      )}
+      {roaming && <div style={{ height: 46 }} />}
     </div>
   );
 }
@@ -520,7 +677,7 @@ function StartScreen() {
     >
       <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: -1, color: "#fff" }}>OVERCASHED</div>
       <div style={{ fontSize: 14, opacity: 0.5, maxWidth: 400, textAlign: "center", lineHeight: 1.6, color: "#e8e8ef" }}>
-        Two players. One finance team. Walk to a desk and approve or reject every ticket before time runs out.
+        Follow your color to the assigned desk, clear its task, then sprint to the next one before time runs out.
       </div>
       <div
         style={{
@@ -539,21 +696,66 @@ function StartScreen() {
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function CoopGame() {
+  // Ambient office music loop (armed on first user gesture).
+  useAmbientMusic();
+
   const [state, setState] = useState<GameState>(() => snap(gameState));
   const [p1Flash, setP1Flash] = useState<string | null>(null);
   const [p2Flash, setP2Flash] = useState<string | null>(null);
   const [shaking, setShaking] = useState(false);
   const [phaseFlash, setPhaseFlash] = useState(false);
   const [debrief, setDebrief] = useState("");
-  const [p1AtStation, setP1AtStation] = useState(false);
-  const [p2AtStation, setP2AtStation] = useState(false);
+  const [p1AtTarget, setP1AtTarget] = useState(false);
+  const [p2AtTarget, setP2AtTarget] = useState(false);
   const [p1StationLabel, setP1StationLabel] = useState<string | null>(null);
   const [p2StationLabel, setP2StationLabel] = useState<string | null>(null);
+  const [targetStationIds, setTargetStationIds] = useState<TargetStationIds>([null, null]);
+  const [p1Confirmed, setP1Confirmed] = useState(false);
+  const [p2Confirmed, setP2Confirmed] = useState(false);
+  const targetStationIdsRef = useRef<TargetStationIds>([null, null]);
+  const confirmedRef = useRef<[boolean, boolean]>([false, false]);
+  const travelDeadlineRef = useRef<[number, number]>([
+    DESK_TRAVEL_SECONDS,
+    DESK_TRAVEL_SECONDS,
+  ]);
+  const reachedTargetRef = useRef<[boolean, boolean]>([false, false]);
   const prevPhaseRef = useRef(gameState.phase);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track previous station state to assign tickets on arrival
-  const prevP1Station = useRef<string | null>(null);
-  const prevP2Station = useRef<string | null>(null);
+
+  const updateTargetStationIds = useCallback((next: TargetStationIds) => {
+    targetStationIdsRef.current = next;
+    setTargetStationIds(next);
+  }, []);
+
+  const updateConfirmed = useCallback((playerIndex: 0 | 1, confirmed: boolean) => {
+    const next: [boolean, boolean] = [...confirmedRef.current];
+    next[playerIndex] = confirmed;
+    confirmedRef.current = next;
+    if (playerIndex === 0) setP1Confirmed(confirmed);
+    else setP2Confirmed(confirmed);
+  }, []);
+
+  const assignStartingDesks = useCallback(() => {
+    const p1Target = pickStationId(new Set());
+    const p2Target = pickStationId(new Set([p1Target]));
+    travelDeadlineRef.current = [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS];
+    reachedTargetRef.current = [false, false];
+    updateTargetStationIds([p1Target, p2Target]);
+  }, [updateTargetStationIds]);
+
+  const rotatePlayerDesk = useCallback((playerIndex: 0 | 1) => {
+    const current = targetStationIdsRef.current[playerIndex];
+    const other = targetStationIdsRef.current[playerIndex === 0 ? 1 : 0];
+    const excluded = new Set<string>();
+    if (current) excluded.add(current);
+    if (other) excluded.add(other);
+    const nextTarget = pickStationId(excluded);
+    const next: TargetStationIds = [...targetStationIdsRef.current];
+    next[playerIndex] = nextTarget;
+    travelDeadlineRef.current[playerIndex] = DESK_TRAVEL_SECONDS;
+    reachedTargetRef.current[playerIndex] = false;
+    updateTargetStationIds(next);
+  }, [updateTargetStationIds]);
 
   useEffect(() => { ensureKeyframes(); }, []);
 
@@ -577,15 +779,17 @@ export function CoopGame() {
           resetTimerRef.current = null;
           setDebrief("");
           prevPhaseRef.current = 1;
-          prevP1Station.current = null;
-          prevP2Station.current = null;
+          travelDeadlineRef.current = [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS];
+          reachedTargetRef.current = [false, false];
+          updateTargetStationIds([null, null]);
+          updateConfirmed(0, false);
+          updateConfirmed(1, false);
         }, 10_000);
       }
     });
-  }, []);
+  }, [updateConfirmed, updateTargetStationIds]);
 
-  // Movement input — full WASD + arrows. state.ts decides which keys
-  // actually produce movement based on station proximity.
+  // Movement is always available, including while standing at a desk.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
@@ -612,55 +816,6 @@ export function CoopGame() {
     };
   }, []);
 
-  // Combined game loop
-  useEffect(() => {
-    let raf = 0;
-    let last = performance.now();
-    const loop = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 0.05);
-      last = now;
-      stepGame(dt);
-      tickGame(dt);
-
-      // Update station proximity for UI
-      const s1 = playerStations[0];
-      const s2 = playerStations[1];
-      setP1AtStation(s1 !== null);
-      setP2AtStation(s2 !== null);
-      setP1StationLabel(s1?.label ?? null);
-      setP2StationLabel(s2?.label ?? null);
-
-      // Assign ticket when player arrives at a station (wasn't at one before)
-      if (gameState.isRunning) {
-        const s1Id = s1?.id ?? null;
-        const s2Id = s2?.id ?? null;
-
-        if (s1Id && s1Id !== prevP1Station.current && !gameState.p1.activeTicket) {
-          gameState.p1.activeTicket = drawTicket(gameState.phase);
-        }
-        if (!s1Id && prevP1Station.current) {
-          // Left station — clear ticket
-          gameState.p1.activeTicket = null;
-        }
-
-        if (s2Id && s2Id !== prevP2Station.current && !gameState.p2.activeTicket) {
-          gameState.p2.activeTicket = drawTicket(gameState.phase);
-        }
-        if (!s2Id && prevP2Station.current) {
-          gameState.p2.activeTicket = null;
-        }
-
-        prevP1Station.current = s1Id;
-        prevP2Station.current = s2Id;
-      }
-
-      if (gameState.isRunning) setState(snap(gameState));
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
   const flash = useCallback((player: "p1" | "p2", result: "correct" | "wrong") => {
     const cls = result === "correct" ? "flash-green" : "flash-red";
     if (player === "p1") {
@@ -676,47 +831,163 @@ export function CoopGame() {
     }
   }, []);
 
-  // Ticket keybinds — only fire when that player is at a station
+  // Combined game loop
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    const loop = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      stepGame(dt);
+      tickGame(dt);
+
+      // Update station proximity for UI
+      const s1 = playerStations[0];
+      const s2 = playerStations[1];
+      const p1TargetId = targetStationIdsRef.current[0];
+      const p2TargetId = targetStationIdsRef.current[1];
+      const p1IsAtTarget = s1?.id === p1TargetId;
+      const p2IsAtTarget = s2?.id === p2TargetId;
+      if (p1IsAtTarget) reachedTargetRef.current[0] = true;
+      if (p2IsAtTarget) reachedTargetRef.current[1] = true;
+      setP1AtTarget(p1IsAtTarget);
+      setP2AtTarget(p2IsAtTarget);
+      setP1StationLabel(STATIONS.find((station) => station.id === p1TargetId)?.label ?? null);
+      setP2StationLabel(STATIONS.find((station) => station.id === p2TargetId)?.label ?? null);
+
+      // Walking away is always allowed and immediately exits the desk task.
+      if (gameState.isRunning) {
+        const targetIds = targetStationIdsRef.current;
+        for (const playerIndex of [0, 1] as const) {
+          if (!targetIds[playerIndex] || reachedTargetRef.current[playerIndex]) continue;
+
+          travelDeadlineRef.current[playerIndex] = Math.max(
+            0,
+            travelDeadlineRef.current[playerIndex] - dt,
+          );
+          if (travelDeadlineRef.current[playerIndex] > 0) continue;
+
+          const player = playerIndex === 0 ? "p1" : "p2";
+          missDeskDeadline(player);
+          flash(player, "wrong");
+          if (gameState.isRunning) rotatePlayerDesk(playerIndex);
+        }
+
+        if (confirmedRef.current[0] && !p1IsAtTarget) {
+          updateConfirmed(0, false);
+        }
+        if (confirmedRef.current[1] && !p2IsAtTarget) {
+          updateConfirmed(1, false);
+        }
+      }
+
+      if (gameState.isRunning) setState(snap(gameState));
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [flash, rotatePlayerDesk, updateConfirmed]);
+
+  // Q/M toggle desk mode. A/D and Left/Right are only consumed as decisions
+  // while that player is actively reviewing at their assigned desk.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
 
       if (!gameState.isRunning && !gameState.isOver) {
         initGame();
+        assignStartingDesks();
         e.preventDefault();
         return;
       }
 
       if (!gameState.isRunning) return;
 
-      // P1: A = approve, D = reject — only when at station
-      if (key === "a" && playerStations[0]) {
+      // P1 desk toggle: Q opens the assigned task or leaves it.
+      if (key === "q") {
+        if (confirmedRef.current[0]) {
+          updateConfirmed(0, false);
+          e.preventDefault();
+          return;
+        }
+        if (playerStations[0]?.id !== targetStationIdsRef.current[0]) return;
         e.preventDefault();
-        flash("p1", submitAnswer("p1", "approve"));
-        return;
-      }
-      if (key === "d" && playerStations[0]) {
-        e.preventDefault();
-        flash("p1", submitAnswer("p1", "reject"));
+        updateConfirmed(0, true);
+        gameState.p1.activeTicket ??= drawTicket(gameState.phase);
         return;
       }
 
-      // P2: Left = approve, Right = reject — only when at station
-      if (key === "arrowleft" && playerStations[1]) {
+      // P2 desk toggle: M opens the assigned task or leaves it.
+      if (key === "m") {
+        if (confirmedRef.current[1]) {
+          updateConfirmed(1, false);
+          e.preventDefault();
+          return;
+        }
+        if (playerStations[1]?.id !== targetStationIdsRef.current[1]) return;
         e.preventDefault();
-        flash("p2", submitAnswer("p2", "approve"));
+        updateConfirmed(1, true);
+        gameState.p2.activeTicket ??= drawTicket(gameState.phase);
         return;
       }
-      if (key === "arrowright" && playerStations[1]) {
+
+      // P1: A = approve, D = reject while reviewing. Consuming the key from
+      // the movement set prevents a decision from also nudging the avatar.
+      if (
+        key === "a" &&
+        confirmedRef.current[0] &&
+        playerStations[0]?.id === targetStationIdsRef.current[0]
+      ) {
+        keys.delete(key);
+        e.preventDefault();
+        flash("p1", submitAnswer("p1", "approve"));
+        updateConfirmed(0, false);
+        if (gameState.isRunning) rotatePlayerDesk(0);
+        return;
+      }
+      if (
+        key === "d" &&
+        confirmedRef.current[0] &&
+        playerStations[0]?.id === targetStationIdsRef.current[0]
+      ) {
+        keys.delete(key);
+        e.preventDefault();
+        flash("p1", submitAnswer("p1", "reject"));
+        updateConfirmed(0, false);
+        if (gameState.isRunning) rotatePlayerDesk(0);
+        return;
+      }
+
+      // P2: Left = approve, Right = reject while reviewing.
+      if (
+        key === "arrowleft" &&
+        confirmedRef.current[1] &&
+        playerStations[1]?.id === targetStationIdsRef.current[1]
+      ) {
+        keys.delete(key);
+        e.preventDefault();
+        flash("p2", submitAnswer("p2", "approve"));
+        updateConfirmed(1, false);
+        if (gameState.isRunning) rotatePlayerDesk(1);
+        return;
+      }
+      if (
+        key === "arrowright" &&
+        confirmedRef.current[1] &&
+        playerStations[1]?.id === targetStationIdsRef.current[1]
+      ) {
+        keys.delete(key);
         e.preventDefault();
         flash("p2", submitAnswer("p2", "reject"));
+        updateConfirmed(1, false);
+        if (gameState.isRunning) rotatePlayerDesk(1);
         return;
       }
     };
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [flash]);
+  }, [assignStartingDesks, flash, rotatePlayerDesk, updateConfirmed]);
 
   useEffect(() => {
     return () => {
@@ -739,7 +1010,7 @@ export function CoopGame() {
     >
       {/* 3D Canvas */}
       <Canvas shadows dpr={[1, 2]} gl={{ antialias: true }} style={{ position: "absolute", inset: 0 }}>
-        <WorldContents />
+        <WorldContents targetStationIds={targetStationIds} />
         <SplitScreenRenderer />
       </Canvas>
 
@@ -775,27 +1046,37 @@ export function CoopGame() {
           <div style={{ position: "absolute", top: 56, left: 0, right: 0, bottom: 0, zIndex: 25 }}>
             <PlayerHUD
               player="P1"
+              playerIndex={0}
               state={state.p1}
               flashClass={p1Flash}
               approveKey="A"
               rejectKey="D"
               moveKeys="WASD"
+              confirmKey="Q"
               color="#4f9dff"
               side="left"
-              atStation={p1AtStation}
+              atStation={p1AtTarget}
               stationLabel={p1StationLabel}
+              targetStation={STATIONS.find((station) => station.id === targetStationIds[0]) ?? null}
+              travelSecondsLeft={Math.ceil(travelDeadlineRef.current[0])}
+              confirmed={p1Confirmed}
             />
             <PlayerHUD
               player="P2"
+              playerIndex={1}
               state={state.p2}
               flashClass={p2Flash}
               approveKey="←"
               rejectKey="→"
               moveKeys="Arrow Keys"
+              confirmKey="M"
               color="#ff7a59"
               side="right"
-              atStation={p2AtStation}
+              atStation={p2AtTarget}
               stationLabel={p2StationLabel}
+              targetStation={STATIONS.find((station) => station.id === targetStationIds[1]) ?? null}
+              travelSecondsLeft={Math.ceil(travelDeadlineRef.current[1])}
+              confirmed={p2Confirmed}
             />
           </div>
         </>
