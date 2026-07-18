@@ -13,612 +13,609 @@ const RAMP_FRAUD =
 const RAMP_BUDGET =
   "Ramp spend controls enforce policy limits at authorization — out-of-policy charges are blocked before they process";
 
-const TICKET_POOL = [
-  // ─── DUPLICATE — legitimate (approve) × 7 ───────────────────────────
-  {
-    id: "dup-legit-01",
-    task: "duplicate",
-    display: {
+const DIFFICULTIES = ["easy", "medium", "hard"];
+
+function difficultyAt(i) {
+  return DIFFICULTIES[i % 3];
+}
+
+function fmtLimit(n) {
+  return n.toLocaleString("en-US");
+}
+
+/** Deterministic amount pick inside [min, max] from index. */
+function amountInRange(min, max, i) {
+  const span = max - min;
+  const stepped = min + ((i * 37) % (Math.floor(span) + 1));
+  return Math.round(stepped * 100) / 100;
+}
+
+function buildDuplicateTickets() {
+  const vendors = [
+    {
       vendor: "Notion",
-      amount: 280,
-      description: "Notion workspace subscription — billing@notion.so",
-      invoice_number: "INV-1001",
+      amounts: [280, 294, 261, 308],
+      email: "billing@notion.so",
+      bases: [
+        "Notion workspace subscription",
+        "Notion Plus seat renewal",
+        "Notion team plan monthly",
+        "Notion AI add-on billing",
+      ],
     },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "easy",
-  },
-  {
-    id: "dup-legit-02",
-    task: "duplicate",
-    display: {
+    {
       vendor: "Slack",
-      amount: 375,
-      description: "Slack Business+ plan — billing@slack.com",
-      invoice_number: "INV-1002",
+      amounts: [375, 390, 412, 350],
+      email: "billing@slack.com",
+      bases: [
+        "Slack Business+ plan",
+        "Slack Enterprise Grid seats",
+        "Slack Connect workspace fee",
+        "Slack Pro plan renewal",
+      ],
     },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "easy",
-  },
-  {
-    id: "dup-legit-03",
-    task: "duplicate",
-    display: {
+    {
       vendor: "Zoom",
-      amount: 275,
-      description: "Zoom Pro monthly — billing@zoom.us",
-      invoice_number: "INV-1003",
+      amounts: [275, 289, 301, 263],
+      email: "billing@zoom.us",
+      bases: [
+        "Zoom Pro monthly",
+        "Zoom Webinar add-on",
+        "Zoom Business plan",
+        "Zoom Phone seats",
+      ],
     },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "easy",
-  },
-  {
-    id: "dup-legit-04",
-    task: "duplicate",
-    display: {
-      vendor: "Gusto",
-      amount: 356,
-      description: "Gusto payroll subscription — billing@gusto.com",
-      invoice_number: "INV-1004",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "medium",
-  },
-  {
-    id: "dup-legit-05",
-    task: "duplicate",
-    display: {
-      vendor: "Rippling",
-      amount: 820,
-      description: "Rippling HR platform — billing@rippling.com",
-      invoice_number: "INV-1005",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "medium",
-  },
-  {
-    id: "dup-legit-06",
-    task: "duplicate",
-    display: {
+    {
       vendor: "AWS",
-      amount: 1847.23,
-      description: "AWS cloud infrastructure — aws-billing@amazon.com",
-      invoice_number: "INV-1006",
+      amounts: [1847.23, 2341.17, 987.44, 3102.89, 1204.67],
+      email: "aws-billing@amazon.com",
+      bases: [
+        "AWS cloud infrastructure",
+        "AWS EC2 compute charges",
+        "AWS S3 and data transfer",
+        "AWS reserved instance billing",
+        "AWS support plan invoice",
+      ],
     },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "hard",
-  },
-  {
-    id: "dup-legit-07",
-    task: "duplicate",
-    display: {
-      vendor: "WeWork",
-      amount: 4200,
-      description: "WeWork shared office — invoices@wework.com",
-      invoice_number: "INV-1007",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "medium",
-  },
-
-  // ─── DUPLICATE — reject (altered invoice + second_invoice) × 7 ──────
-  {
-    id: "dup-reject-01",
-    task: "duplicate",
-    display: {
-      vendor: "Notion",
-      amount: 355,
-      description: "Notion workspace subscription — billing@notion.so",
-      invoice_number: "INV1001",
-      second_invoice: {
-        vendor: "Notion",
-        amount: 280,
-        invoice_number: "INV-1001",
-      },
-    },
-    correct_answer: "reject",
-    dollar_impact: 355,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "easy",
-  },
-  {
-    id: "dup-reject-02",
-    task: "duplicate",
-    display: {
-      vendor: "Slack",
-      amount: 450,
-      description: "Slack Business+ plan — billing@slack.com",
-      invoice_number: "INV1002",
-      second_invoice: {
-        vendor: "Slack",
-        amount: 375,
-        invoice_number: "INV-1002",
-      },
-    },
-    correct_answer: "reject",
-    dollar_impact: 450,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "easy",
-  },
-  {
-    id: "dup-reject-03",
-    task: "duplicate",
-    display: {
-      vendor: "Zoom",
-      amount: 340,
-      description: "Zoom Pro monthly — billing@zoom.us",
-      invoice_number: "INV-1003A",
-      second_invoice: {
-        vendor: "Zoom",
-        amount: 275,
-        invoice_number: "INV-1003",
-      },
-    },
-    correct_answer: "reject",
-    dollar_impact: 340,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "medium",
-  },
-  {
-    id: "dup-reject-04",
-    task: "duplicate",
-    display: {
+    {
       vendor: "Gusto",
-      amount: 430,
-      description: "Gusto payroll subscription — billing@gusto.com",
-      invoice_number: "INV1004",
-      second_invoice: {
-        vendor: "Gusto",
-        amount: 356,
-        invoice_number: "INV-1004",
-      },
+      amounts: [356, 368, 344, 380],
+      email: "billing@gusto.com",
+      bases: [
+        "Gusto payroll subscription",
+        "Gusto HR suite monthly",
+        "Gusto benefits admin fee",
+        "Gusto contractor payments plan",
+      ],
     },
-    correct_answer: "reject",
-    dollar_impact: 430,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "medium",
-  },
-  {
-    id: "dup-reject-05",
-    task: "duplicate",
-    display: {
+    {
       vendor: "Rippling",
-      amount: 895,
-      description: "Rippling HR platform — billing@rippling.com",
-      invoice_number: "INV-1005-DUP",
-      second_invoice: {
-        vendor: "Rippling",
-        amount: 820,
-        invoice_number: "INV-1005",
-      },
+      amounts: [820, 845, 798, 862],
+      email: "billing@rippling.com",
+      bases: [
+        "Rippling HR platform",
+        "Rippling IT management seats",
+        "Rippling payroll module",
+        "Rippling device management",
+      ],
     },
-    correct_answer: "reject",
-    dollar_impact: 895,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "hard",
-  },
-  {
-    id: "dup-reject-06",
-    task: "duplicate",
-    display: {
-      vendor: "AWS",
-      amount: 1920.5,
-      description: "AWS cloud infrastructure — aws-billing@amazon.com",
-      invoice_number: "INV1006",
-      second_invoice: {
-        vendor: "AWS",
-        amount: 1847.23,
-        invoice_number: "INV-1006",
-      },
-    },
-    correct_answer: "reject",
-    dollar_impact: 1920.5,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "hard",
-  },
-  {
-    id: "dup-reject-07",
-    task: "duplicate",
-    display: {
+    {
       vendor: "WeWork",
-      amount: 4285,
-      description: "WeWork shared office — invoices@wework.com",
-      invoice_number: "INV1007",
-      second_invoice: {
-        vendor: "WeWork",
-        amount: 4200,
-        invoice_number: "INV-1007",
-      },
+      amounts: [4200, 4350, 3980, 4100],
+      email: "invoices@wework.com",
+      bases: [
+        "WeWork shared office",
+        "WeWork dedicated desk monthly",
+        "WeWork all-access membership",
+        "WeWork conference room package",
+      ],
     },
-    correct_answer: "reject",
-    dollar_impact: 4285,
-    ramp_feature: RAMP_DUPLICATE,
-    difficulty: "medium",
-  },
-
-  // ─── FRAUD — reject × 13 ────────────────────────────────────────────
-  {
-    id: "fraud-01",
-    task: "fraud",
-    display: {
-      vendor: "Notion",
-      amount: 280,
-      description: "Notion invoice — billing@notion-invoices.com",
-      invoice_number: "INV-N-4401",
+    {
+      vendor: "Stripe",
+      amounts: [892.4, 1203.77, 445.23],
+      email: "support@stripe.com",
+      bases: [
+        "Stripe processing fees",
+        "Stripe Radar and billing suite",
+        "Stripe Atlas annual fee",
+      ],
     },
-    correct_answer: "reject",
-    dollar_impact: 280,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "easy",
-  },
-  {
-    id: "fraud-02",
-    task: "fraud",
-    display: {
-      vendor: "AWS",
-      amount: 5000,
-      description: "Urgent AWS invoice — aws-billing@amazon-payments.net",
-      invoice_number: "INV-AWS-9901",
+    {
+      vendor: "Salesforce",
+      amounts: [2400, 2650, 2100],
+      email: "billing@salesforce.com",
+      bases: [
+        "Salesforce Sales Cloud seats",
+        "Salesforce Service Cloud renewal",
+        "Salesforce Platform licenses",
+      ],
     },
-    correct_answer: "reject",
-    dollar_impact: 5000,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "medium",
-  },
-  {
-    id: "fraud-03",
-    task: "fraud",
-    display: {
-      vendor: "Slack",
-      amount: 375,
-      description: "Slack renewal — invoices@sl4ck.com",
-      invoice_number: "INV-SL-2201",
+    {
+      vendor: "HubSpot",
+      amounts: [1800, 1950, 1650],
+      email: "billing@hubspot.com",
+      bases: [
+        "HubSpot Marketing Hub",
+        "HubSpot Sales Hub Pro",
+        "HubSpot CMS seats",
+      ],
     },
-    correct_answer: "reject",
-    dollar_impact: 375,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "easy",
-  },
-  {
-    id: "fraud-04",
-    task: "fraud",
-    display: {
-      vendor: "TotallyLegitSupplies LLC",
-      amount: 10000,
-      description: "Office equipment wire transfer request",
-      invoice_number: "WIRE-TLS-001",
-    },
-    correct_answer: "reject",
-    dollar_impact: 10000,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "hard",
-  },
-  {
-    id: "fraud-05",
-    task: "fraud",
-    display: {
-      vendor: "FastPayVendors Inc",
-      amount: 10000,
-      description: "Expedited vendor payout — wire transfer required today",
-      invoice_number: "WIRE-FPV-778",
-    },
-    correct_answer: "reject",
-    dollar_impact: 10000,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "hard",
-  },
-  {
-    id: "fraud-06",
-    task: "fraud",
-    display: {
-      vendor: "QuickRemit Solutions",
-      amount: 5000,
-      description: "Same-day remittance — wire to new beneficiary",
-      invoice_number: "WIRE-QRS-112",
-    },
-    correct_answer: "reject",
-    dollar_impact: 5000,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "hard",
-  },
-  {
-    id: "fraud-07",
-    task: "fraud",
-    display: {
-      vendor: "Zoom",
-      amount: 275,
-      description: "Zoom billing update — billing@zoom-pay.com",
-      invoice_number: "INV-ZM-3310",
-    },
-    correct_answer: "reject",
-    dollar_impact: 275,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "easy",
-  },
-  {
-    id: "fraud-08",
-    task: "fraud",
-    display: {
-      vendor: "Gusto",
-      amount: 5000,
-      description: "Payroll correction — payroll@gust0.com",
-      invoice_number: "INV-GU-5502",
-    },
-    correct_answer: "reject",
-    dollar_impact: 5000,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "medium",
-  },
-  {
-    id: "fraud-09",
-    task: "fraud",
-    display: {
-      vendor: "Rippling",
-      amount: 820,
-      description: "HR platform renewal — billing@ripp1ing.com",
-      invoice_number: "INV-RP-6603",
-    },
-    correct_answer: "reject",
-    dollar_impact: 820,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "medium",
-  },
-  {
-    id: "fraud-10",
-    task: "fraud",
-    display: {
-      vendor: "WeWork",
-      amount: 4200,
-      description: "Office lease payment — invoices@wew0rk.com",
-      invoice_number: "INV-WW-7704",
-    },
-    correct_answer: "reject",
-    dollar_impact: 4200,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "medium",
-  },
-  {
-    id: "fraud-11",
-    task: "fraud",
-    display: {
-      vendor: "TotallyLegitSupplies LLC",
-      amount: 5000,
-      description: "IT hardware drop-ship — wire transfer preferred",
-      invoice_number: "WIRE-TLS-204",
-    },
-    correct_answer: "reject",
-    dollar_impact: 5000,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "hard",
-  },
-  {
-    id: "fraud-12",
-    task: "fraud",
-    display: {
-      vendor: "FastPayVendors Inc",
-      amount: 7500,
-      description: "Urgent AP catch-up — invoices@fastpay-vendors.net",
-      invoice_number: "INV-FPV-901",
-    },
-    correct_answer: "reject",
-    dollar_impact: 7500,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "hard",
-  },
-  {
-    id: "fraud-13",
-    task: "fraud",
-    display: {
-      vendor: "QuickRemit Solutions",
-      amount: 10000,
-      description: "Executive bonus disbursement via wire",
-      invoice_number: "WIRE-QRS-999",
-    },
-    correct_answer: "reject",
-    dollar_impact: 10000,
-    ramp_feature: RAMP_FRAUD,
-    difficulty: "hard",
-  },
-
-  // ─── BUDGET — reject (over limit) × 4 specified + extras ────────────
-  {
-    id: "budget-reject-01",
-    task: "budget",
-    display: {
-      vendor: "WeWork",
-      amount: 12400,
-      description: "WeWork private office NYC (policy limit $8,000)",
-      invoice_number: "INV-BUD-2001",
-    },
-    correct_answer: "reject",
-    dollar_impact: 4400,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "medium",
-  },
-  {
-    id: "budget-reject-02",
-    task: "budget",
-    display: {
-      vendor: "United Airlines",
-      amount: 4200,
-      description: "Business class flights (policy limit $1,500)",
-      invoice_number: "INV-BUD-2002",
-    },
-    correct_answer: "reject",
-    dollar_impact: 2700,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "easy",
-  },
-  {
-    id: "budget-reject-03",
-    task: "budget",
-    display: {
-      vendor: "Marriott",
-      amount: 8900,
-      description: "Team offsite hotel (policy limit $5,000)",
-      invoice_number: "INV-BUD-2003",
-    },
-    correct_answer: "reject",
-    dollar_impact: 3900,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "medium",
-  },
-  {
-    id: "budget-reject-04",
-    task: "budget",
-    display: {
-      vendor: "The French Laundry",
-      amount: 2100,
-      description: "Executive dinner (policy limit $500)",
-      invoice_number: "INV-BUD-2004",
-    },
-    correct_answer: "reject",
-    dollar_impact: 1600,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "easy",
-  },
-  {
-    id: "budget-reject-05",
-    task: "budget",
-    display: {
-      vendor: "Apple",
-      amount: 3200,
-      description: "MacBook Pro fleet add-on (policy limit $2,000)",
-      invoice_number: "INV-BUD-2005",
-    },
-    correct_answer: "reject",
-    dollar_impact: 1200,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "medium",
-  },
-  {
-    id: "budget-reject-06",
-    task: "budget",
-    display: {
-      vendor: "Delta",
-      amount: 2800,
-      description: "Last-minute first-class redeye (policy limit $1,200)",
-      invoice_number: "INV-BUD-2006",
-    },
-    correct_answer: "reject",
-    dollar_impact: 1600,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "hard",
-  },
-  {
-    id: "budget-reject-07",
-    task: "budget",
-    display: {
-      vendor: "Four Seasons",
-      amount: 6500,
-      description: "Client entertainment suite (policy limit $3,000)",
-      invoice_number: "INV-BUD-2007",
-    },
-    correct_answer: "reject",
-    dollar_impact: 3500,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "hard",
-  },
-
-  // ─── BUDGET — approve (under limit) × 4 specified + extras ──────────
-  {
-    id: "budget-approve-01",
-    task: "budget",
-    display: {
-      vendor: "Sweetgreen",
-      amount: 340,
-      description: "Team lunch (policy limit $500)",
-      invoice_number: "INV-BUD-3001",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "easy",
-  },
-  {
-    id: "budget-approve-02",
-    task: "budget",
-    display: {
-      vendor: "Linear",
-      amount: 89,
-      description: "Software tool subscription (policy limit $200)",
-      invoice_number: "INV-BUD-3002",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "easy",
-  },
-  {
-    id: "budget-approve-03",
-    task: "budget",
-    display: {
-      vendor: "Staples",
-      amount: 127,
-      description: "Office supplies (policy limit $250)",
-      invoice_number: "INV-BUD-3003",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "easy",
-  },
-  {
-    id: "budget-approve-04",
-    task: "budget",
-    display: {
-      vendor: "Web Summit",
-      amount: 499,
-      description: "Conference ticket (policy limit $1,000)",
-      invoice_number: "INV-BUD-3004",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "medium",
-  },
-  {
-    id: "budget-approve-05",
-    task: "budget",
-    display: {
-      vendor: "Uber",
-      amount: 86,
-      description: "Airport ground transport (policy limit $150)",
-      invoice_number: "INV-BUD-3005",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "easy",
-  },
-  {
-    id: "budget-approve-06",
-    task: "budget",
-    display: {
+    {
       vendor: "Figma",
-      amount: 45,
-      description: "Design seat add-on (policy limit $100)",
-      invoice_number: "INV-BUD-3006",
+      amounts: [450, 480, 420],
+      email: "billing@figma.com",
+      bases: [
+        "Figma Organization seats",
+        "Figma FigJam add-on",
+        "Figma Dev Mode licenses",
+      ],
     },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: RAMP_BUDGET,
-    difficulty: "easy",
-  },
-];
+    {
+      vendor: "Linear",
+      amounts: [240, 260, 220],
+      email: "billing@linear.app",
+      bases: [
+        "Linear Business plan",
+        "Linear Plus seats",
+        "Linear Insights add-on",
+      ],
+    },
+    {
+      vendor: "Datadog",
+      amounts: [3200, 3450, 2980],
+      email: "billing@datadoghq.com",
+      bases: [
+        "Datadog infrastructure monitoring",
+        "Datadog APM and logs",
+        "Datadog security monitoring",
+      ],
+    },
+  ];
+
+  const pairs = [];
+  for (const v of vendors) {
+    for (let i = 0; i < v.amounts.length; i++) {
+      pairs.push({
+        vendor: v.vendor,
+        amount: v.amounts[i],
+        email: v.email,
+        base: v.bases[i % v.bases.length],
+      });
+    }
+  }
+  // 47 unique vendor-amount pairs; pad to 70 by cycling with alt descriptions
+  const altSuffix = [
+    " — monthly cycle",
+    " — Q2 billing",
+    " — seat reconciliation",
+    " — annual true-up",
+    " — usage adjustment",
+    " — renewal notice",
+  ];
+
+  const tickets = [];
+  let invSeq = 1001;
+
+  // 35 legitimate approve — walk pair list so every vendor appears
+  for (let i = 0; i < 35; i++) {
+    const p = pairs[i % pairs.length];
+    const inv = `INV-${invSeq++}`;
+    const description = `${p.base}${altSuffix[i % altSuffix.length]} — ${p.email} (#${i + 1})`;
+    tickets.push({
+      id: `dup-legit-${String(i + 1).padStart(2, "0")}`,
+      task: "duplicate",
+      display: {
+        vendor: p.vendor,
+        amount: p.amount,
+        description,
+        invoice_number: inv,
+      },
+      correct_answer: "approve",
+      dollar_impact: 0,
+      ramp_feature: RAMP_DUPLICATE,
+      difficulty: difficultyAt(i),
+    });
+  }
+
+  // 35 reject — altered invoice + second_invoice pointing at prior legit
+  const alterStyles = [
+    (inv, amt) => ({
+      invoice_number: inv.replace("-", ""),
+      amount: Math.round((amt + 75) * 100) / 100,
+    }),
+    (inv, amt) => ({
+      invoice_number: `${inv}A`,
+      amount: Math.round((amt + 65) * 100) / 100,
+    }),
+    (inv, amt) => ({
+      invoice_number: `${inv}-DUP`,
+      amount: Math.round((amt + 85) * 100) / 100,
+    }),
+    (inv, amt) => ({
+      invoice_number: inv.replace("INV-", "INV"),
+      amount: Math.round((amt * 1.08) * 100) / 100,
+    }),
+    (inv, amt) => ({
+      invoice_number: `${inv}-R`,
+      amount: Math.round((amt + 120) * 100) / 100,
+    }),
+  ];
+
+  // Offset into pairs so remaining vendors (HubSpot/Figma/Linear/Datadog) appear
+  for (let i = 0; i < 35; i++) {
+    const p = pairs[(i + 35) % pairs.length];
+    const priorInv = `INV-${2000 + i}`;
+    const altered = alterStyles[i % alterStyles.length](priorInv, p.amount);
+    const description = `${p.base}${altSuffix[(i + 3) % altSuffix.length]} — ${p.email} (resubmit #${i + 1})`;
+    tickets.push({
+      id: `dup-reject-${String(i + 1).padStart(2, "0")}`,
+      task: "duplicate",
+      display: {
+        vendor: p.vendor,
+        amount: altered.amount,
+        description,
+        invoice_number: altered.invoice_number,
+        second_invoice: {
+          vendor: p.vendor,
+          amount: p.amount,
+          invoice_number: priorInv,
+        },
+      },
+      correct_answer: "reject",
+      dollar_impact: altered.amount,
+      ramp_feature: RAMP_DUPLICATE,
+      difficulty: difficultyAt(i + 1),
+    });
+  }
+
+  return tickets;
+}
+
+function buildFraudTickets() {
+  const lookAlikes = [
+    { vendor: "Notion", email: "billing@notion-invoices.com", label: "Notion invoice" },
+    { vendor: "AWS", email: "aws-billing@amazon-payments.net", label: "Urgent AWS invoice" },
+    { vendor: "Slack", email: "invoices@sl4ck.com", label: "Slack renewal" },
+    { vendor: "Zoom", email: "billing@z0om.us", label: "Zoom billing update" },
+    { vendor: "Gusto", email: "pay@gusto-payroll.com", label: "Payroll correction" },
+    { vendor: "Rippling", email: "support@ripp1ing.com", label: "HR platform renewal" },
+    { vendor: "WeWork", email: "invoices@we-work.net", label: "Office lease payment" },
+    { vendor: "Salesforce", email: "billing@salesf0rce.com", label: "CRM license invoice" },
+    { vendor: "HubSpot", email: "pay@hubspot-billing.com", label: "Marketing hub payment" },
+    { vendor: "Stripe", email: "accounting@str1pe.com", label: "Processing fee catch-up" },
+  ];
+
+  const fakeVendors = [
+    {
+      vendor: "TotallyLegitSupplies LLC",
+      lines: [
+        "Office equipment wire transfer request",
+        "IT hardware drop-ship — wire transfer preferred",
+        "Bulk furniture order — same-day wire required",
+      ],
+    },
+    {
+      vendor: "FastPayVendors Inc",
+      lines: [
+        "Expedited vendor payout — wire transfer required today",
+        "Urgent AP catch-up — invoices@fastpay-vendors.net",
+        "Priority supplier settlement via wire",
+      ],
+    },
+    {
+      vendor: "QuickRemit Solutions",
+      lines: [
+        "Same-day remittance — wire to new beneficiary",
+        "Executive bonus disbursement via wire",
+        "Emergency contractor payout — new bank details",
+      ],
+    },
+    {
+      vendor: "GlobalTrade Partners",
+      lines: [
+        "International supplier wire — updated routing",
+        "Customs clearance fee — wire only",
+        "Overseas logistics settlement request",
+      ],
+    },
+    {
+      vendor: "SecureVendor Systems",
+      lines: [
+        "Security audit invoice — wire to escrow",
+        "Compliance tooling license — new payee",
+        "Penetration test retainer via wire",
+      ],
+    },
+    {
+      vendor: "TrustPay International",
+      lines: [
+        "Cross-border payment facilitation fee",
+        "Treasury sweep service — wire transfer",
+        "FX settlement advance request",
+      ],
+    },
+    {
+      vendor: "PrimeSolutions Corp",
+      lines: [
+        "Consulting engagement kickoff — wire deposit",
+        "Strategy retainer invoice — new account",
+        "Advisory fee — expedited wire please",
+      ],
+    },
+    {
+      vendor: "EliteVendors LLC",
+      lines: [
+        "Premium vendor onboarding fee",
+        "Preferred supplier annual dues — wire",
+        "Marketplace listing fee — same-day pay",
+      ],
+    },
+    {
+      vendor: "ProSupply Networks",
+      lines: [
+        "Warehouse restock wire transfer",
+        "Industrial supplies — new banking details",
+        "Fleet parts order — wire before ship",
+      ],
+    },
+    {
+      vendor: "SwiftPay Global",
+      lines: [
+        "Instant payout service activation",
+        "Payment rail upgrade — wire required",
+        "Global disbursement fee — urgent",
+      ],
+    },
+  ];
+
+  const amounts = [
+    1000, 2000, 3000, 5000, 7500, 10000, 15000, 20000, 25000, 50000,
+  ];
+
+  const tickets = [];
+  let n = 1;
+
+  const lookAlikeAngles = [
+    "standard billing",
+    "past-due reminder",
+    "final notice",
+    "account review",
+  ];
+
+  // 33 look-alike domain frauds
+  for (let i = 0; i < 33; i++) {
+    const la = lookAlikes[i % lookAlikes.length];
+    const amount = amounts[i % amounts.length];
+    const angle = lookAlikeAngles[Math.floor(i / lookAlikes.length) % lookAlikeAngles.length];
+    const description = `${la.label} (${angle}) — ${la.email} [case ${i + 1}]`;
+    tickets.push({
+      id: `fraud-${String(n++).padStart(2, "0")}`,
+      task: "fraud",
+      display: {
+        vendor: la.vendor,
+        amount,
+        description,
+        invoice_number: `INV-FR-LA-${String(1000 + i)}`,
+      },
+      correct_answer: "reject",
+      dollar_impact: amount,
+      ramp_feature: RAMP_FRAUD,
+      difficulty: difficultyAt(i),
+    });
+  }
+
+  // 32 fake-vendor frauds
+  for (let i = 0; i < 32; i++) {
+    const fv = fakeVendors[i % fakeVendors.length];
+    const amount = amounts[(i + 3) % amounts.length];
+    const line = fv.lines[Math.floor(i / fakeVendors.length) % fv.lines.length];
+    tickets.push({
+      id: `fraud-${String(n++).padStart(2, "0")}`,
+      task: "fraud",
+      display: {
+        vendor: fv.vendor,
+        amount,
+        description: `${line} (ref ${i + 1})`,
+        invoice_number: `WIRE-FV-${String(2000 + i)}`,
+      },
+      correct_answer: "reject",
+      dollar_impact: amount,
+      ramp_feature: RAMP_FRAUD,
+      difficulty: difficultyAt(i + 1),
+    });
+  }
+
+  return tickets;
+}
+
+function buildBudgetTickets() {
+  const rejectScenarios = [
+    {
+      vendor: "WeWork",
+      label: "WeWork private office NYC",
+      min: 9000,
+      max: 15000,
+      limit: 8000,
+      vendors: ["WeWork", "WeWork Midtown", "WeWork SoHo", "WeWork Chelsea"],
+    },
+    {
+      vendor: "United Airlines",
+      label: "Business class flights",
+      min: 2000,
+      max: 6000,
+      limit: 1500,
+      vendors: ["United Airlines", "Delta", "American Airlines", "British Airways"],
+    },
+    {
+      vendor: "Marriott",
+      label: "Team offsite hotel",
+      min: 6000,
+      max: 12000,
+      limit: 5000,
+      vendors: ["Marriott", "Hilton", "Hyatt", "Four Seasons"],
+    },
+    {
+      vendor: "The French Laundry",
+      label: "Executive dinner",
+      min: 800,
+      max: 3000,
+      limit: 500,
+      vendors: ["The French Laundry", "Per Se", "Le Bernardin", "Eleven Madison Park"],
+    },
+    {
+      vendor: "Adobe",
+      label: "Software licenses",
+      min: 500,
+      max: 2000,
+      limit: 400,
+      vendors: ["Adobe", "Microsoft", "Atlassian", "JetBrains"],
+    },
+    {
+      vendor: "Meta Ads",
+      label: "Marketing spend",
+      min: 8000,
+      max: 20000,
+      limit: 5000,
+      vendors: ["Meta Ads", "Google Ads", "LinkedIn Ads", "TikTok Ads"],
+    },
+    {
+      vendor: "Apex Contractors",
+      label: "Contractor invoices",
+      min: 15000,
+      max: 40000,
+      limit: 10000,
+      vendors: ["Apex Contractors", "Northstar Consulting", "BrightPath Staffing", "Orbit Freelance Co"],
+    },
+    {
+      vendor: "Apple",
+      label: "Equipment purchases",
+      min: 3000,
+      max: 8000,
+      limit: 2500,
+      vendors: ["Apple", "Dell", "Lenovo", "CDW"],
+    },
+  ];
+
+  const approveScenarios = [
+    {
+      label: "Team lunch",
+      min: 200,
+      max: 450,
+      limit: 500,
+      vendors: ["Sweetgreen", "Chipotle", "Shake Shack", "Cava", "Dig Inn"],
+    },
+    {
+      label: "Software tool subscription",
+      min: 50,
+      max: 180,
+      limit: 200,
+      vendors: ["Linear", "Notion", "Loom", "Calendly", "Miro"],
+    },
+    {
+      label: "Office supplies",
+      min: 80,
+      max: 230,
+      limit: 250,
+      vendors: ["Staples", "Office Depot", "Amazon Business", "Uline"],
+    },
+    {
+      label: "Conference ticket",
+      min: 300,
+      max: 900,
+      limit: 1000,
+      vendors: ["Web Summit", "TechCrunch Disrupt", "SaaStr Annual", "Collision"],
+    },
+    {
+      label: "Training course",
+      min: 200,
+      max: 800,
+      limit: 1000,
+      vendors: ["Coursera", "Udemy Business", "LinkedIn Learning", "Reforge"],
+    },
+    {
+      label: "Uber business",
+      min: 40,
+      max: 120,
+      limit: 200,
+      vendors: ["Uber", "Uber Business", "Lyft Business"],
+    },
+    {
+      label: "Parking",
+      min: 30,
+      max: 90,
+      limit: 150,
+      vendors: ["SP+ Parking", "ParkWhiz", "Airport Parking Reserve"],
+    },
+    {
+      label: "Books and resources",
+      min: 20,
+      max: 80,
+      limit: 100,
+      vendors: ["Amazon", "Bookshop.org", "O'Reilly", "Audible"],
+    },
+  ];
+
+  const tickets = [];
+
+  // 33 reject (over limit)
+  for (let i = 0; i < 33; i++) {
+    const s = rejectScenarios[i % rejectScenarios.length];
+    const vendor = s.vendors[Math.floor(i / rejectScenarios.length) % s.vendors.length];
+    const amount = amountInRange(s.min, s.max, i + 11);
+    const over = Math.round((amount - s.limit) * 100) / 100;
+    tickets.push({
+      id: `budget-reject-${String(i + 1).padStart(2, "0")}`,
+      task: "budget",
+      display: {
+        vendor,
+        amount,
+        description: `${s.label} via ${vendor} — $${fmtLimit(amount)} requested (policy limit $${fmtLimit(s.limit)})`,
+        invoice_number: `INV-BUD-R-${String(2001 + i)}`,
+      },
+      correct_answer: "reject",
+      dollar_impact: over,
+      ramp_feature: RAMP_BUDGET,
+      difficulty: difficultyAt(i),
+    });
+  }
+
+  // 32 approve (under limit)
+  for (let i = 0; i < 32; i++) {
+    const s = approveScenarios[i % approveScenarios.length];
+    const vendor = s.vendors[Math.floor(i / approveScenarios.length) % s.vendors.length];
+    const amount = amountInRange(s.min, s.max, i + 7);
+    tickets.push({
+      id: `budget-approve-${String(i + 1).padStart(2, "0")}`,
+      task: "budget",
+      display: {
+        vendor,
+        amount,
+        description: `${s.label} via ${vendor} — $${fmtLimit(amount)} (policy limit $${fmtLimit(s.limit)})`,
+        invoice_number: `INV-BUD-A-${String(3001 + i)}`,
+      },
+      correct_answer: "approve",
+      dollar_impact: 0,
+      ramp_feature: RAMP_BUDGET,
+      difficulty: difficultyAt(i + 2),
+    });
+  }
+
+  return tickets;
+}
+
+function buildHardcodedPool() {
+  const pool = [
+    ...buildDuplicateTickets(),
+    ...buildFraudTickets(),
+    ...buildBudgetTickets(),
+  ];
+  if (pool.length !== 200) {
+    throw new Error(`Hardcoded pool must be 200 tickets, got ${pool.length}`);
+  }
+  return pool;
+}
+
+const TICKET_POOL = buildHardcodedPool();
 
 function shuffle(arr) {
   const out = arr.slice();
@@ -632,7 +629,7 @@ function shuffle(arr) {
 }
 
 /**
- * Returns a deep-cloned copy of the hardcoded ticket pool (40 tickets).
+ * Returns a deep-cloned copy of the hardcoded ticket pool (200 tickets).
  * Kept as the permanent fallback — never delete.
  * @returns {object[]}
  */
@@ -820,7 +817,7 @@ async function fetchLiveTickets() {
 }
 
 /**
- * Returns the full ticket pool (40 tickets) — live OpenAI with hardcoded fallback.
+ * Returns the full ticket pool — live OpenAI with hardcoded fallback (200).
  * @returns {Promise<object[]>}
  */
 export async function getTicketPool() {
@@ -836,13 +833,14 @@ export async function getTicketPool() {
 }
 
 /**
- * Splits the pool into two independent piles of 20 for p1 and p2.
+ * Splits the pool into two independent equal halves for p1 and p2.
  * @returns {Promise<{ p1Pool: object[], p2Pool: object[] }>}
  */
 export async function splitPool() {
   const shuffled = shuffle(await getTicketPool());
+  const mid = Math.floor(shuffled.length / 2);
   return {
-    p1Pool: shuffled.slice(0, 20),
-    p2Pool: shuffled.slice(20, 40),
+    p1Pool: shuffled.slice(0, mid),
+    p2Pool: shuffled.slice(mid),
   };
 }
