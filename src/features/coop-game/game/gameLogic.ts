@@ -25,6 +25,8 @@ export type Ticket = {
 export type PlayerState = {
   score: number;
   activeTicket: Ticket | null;
+  /** Seconds remaining to decide on the active ticket; 0 when none. */
+  ticketTimer: number;
 };
 
 export type WrongDecision = {
@@ -255,7 +257,7 @@ const SCORE_REWARD: Record<string, number> = { easy: 100, medium: 200, hard: 350
 const PHASE_THRESHOLDS = [0, 5, 12]; // phase 2 at 5 correct, phase 3 at 12
 export const DESK_MISS_HEALTH_PENALTY = 10;
 export const TICKET_EXPIRY_HEALTH_PENALTY = 15;
-export const TICKET_DECISION_SECONDS = 10;
+export const TICKET_DECISION_SECONDS = 8;
 export const GAME_DURATION_SECONDS = 60;
 
 let ticketQueue: Ticket[] = [];
@@ -306,8 +308,8 @@ export const gameState: GameState = {
   isOver: false,
   didWin: false,
   phase: 1,
-  p1: { score: 0, activeTicket: null },
-  p2: { score: 0, activeTicket: null },
+  p1: { score: 0, activeTicket: null, ticketTimer: 0 },
+  p2: { score: 0, activeTicket: null, ticketTimer: 0 },
   wrongDecisions: [],
   totalDollarImpact: 0,
   missedDeskDeadlines: { p1: 0, p2: 0 },
@@ -324,8 +326,8 @@ export function initGame() {
   gameState.isOver = false;
   gameState.didWin = false;
   gameState.phase = 1;
-  gameState.p1 = { score: 0, activeTicket: null };
-  gameState.p2 = { score: 0, activeTicket: null };
+  gameState.p1 = { score: 0, activeTicket: null, ticketTimer: 0 };
+  gameState.p2 = { score: 0, activeTicket: null, ticketTimer: 0 };
   gameState.wrongDecisions = [];
   gameState.totalDollarImpact = 0;
   gameState.missedDeskDeadlines = { p1: 0, p2: 0 };
@@ -340,8 +342,8 @@ export function resetGame() {
   gameState.isOver = false;
   gameState.didWin = false;
   gameState.phase = 1;
-  gameState.p1 = { score: 0, activeTicket: null };
-  gameState.p2 = { score: 0, activeTicket: null };
+  gameState.p1 = { score: 0, activeTicket: null, ticketTimer: 0 };
+  gameState.p2 = { score: 0, activeTicket: null, ticketTimer: 0 };
   gameState.wrongDecisions = [];
   gameState.totalDollarImpact = 0;
   gameState.missedDeskDeadlines = { p1: 0, p2: 0 };
@@ -368,6 +370,15 @@ export function missDeskDeadline(player: "p1" | "p2") {
   notify();
 }
 
+/** Draw a ticket for a player and start their decision timer. */
+export function assignTicket(player: "p1" | "p2"): Ticket {
+  const ticket = drawTicket(gameState.phase);
+  gameState[player].activeTicket = ticket;
+  gameState[player].ticketTimer = TICKET_DECISION_SECONDS;
+  notify();
+  return ticket;
+}
+
 /** Expire an unanswered ticket and apply the automatic health penalty. */
 export function expireTicket(player: "p1" | "p2"): boolean {
   if (!gameState.isRunning || gameState.isOver || !gameState[player].activeTicket) {
@@ -375,6 +386,7 @@ export function expireTicket(player: "p1" | "p2"): boolean {
   }
 
   gameState[player].activeTicket = null;
+  gameState[player].ticketTimer = 0;
   gameState.expiredTickets[player] += 1;
   gameState.sharedHealth = Math.max(
     0,
@@ -433,15 +445,22 @@ export function submitAnswer(
   // The player must rotate to their next assigned desk before drawing another
   // ticket. CoopGame assigns that desk after this decision is submitted.
   ps.activeTicket = null;
+  ps.ticketTimer = 0;
   notify();
   return correct ? "correct" : "wrong";
 }
 
-/** Call every frame with dt in seconds. Counts down sharedTime. */
+/** Call every frame with dt in seconds. Counts down sharedTime and ticket timers. */
 export function tickGame(dt: number) {
   if (!gameState.isRunning || gameState.isOver) return;
 
   gameState.sharedTime = Math.max(0, gameState.sharedTime - dt);
+
+  for (const player of ["p1", "p2"] as const) {
+    const ps = gameState[player];
+    if (!ps.activeTicket) continue;
+    ps.ticketTimer = Math.max(0, ps.ticketTimer - dt);
+  }
 
   if (gameState.sharedTime <= 0) {
     gameState.isRunning = false;

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DESK_MISS_HEALTH_PENALTY,
   GAME_DURATION_SECONDS,
+  TICKET_DECISION_SECONDS,
   TICKET_EXPIRY_HEALTH_PENALTY,
+  assignTicket,
   drawTicket,
   expireTicket,
   gameState,
@@ -10,6 +12,7 @@ import {
   missDeskDeadline,
   resetGame,
   submitAnswer,
+  tickGame,
 } from "../../src/features/coop-game/game/gameLogic";
 import { generateDebrief } from "../../src/features/coop-game/ai/generateDebrief";
 
@@ -28,6 +31,7 @@ describe("co-op game rotation rules", () => {
 
     expect(submitAnswer("p1", ticket.correct_answer)).toBe("correct");
     expect(gameState.p1.activeTicket).toBeNull();
+    expect(gameState.p1.ticketTimer).toBe(0);
     expect(gameState.p1.score).toBeGreaterThan(0);
   });
 
@@ -53,11 +57,25 @@ describe("co-op game rotation rules", () => {
     expect(debrief).not.toContain("Flawless quarter");
   });
 
+  it("assigns an 8s live ticketTimer that counts down each tick", () => {
+    expect(TICKET_DECISION_SECONDS).toBe(8);
+    assignTicket("p1");
+    expect(gameState.p1.activeTicket).not.toBeNull();
+    expect(gameState.p1.ticketTimer).toBe(8);
+
+    tickGame(0.1);
+    expect(gameState.p1.ticketTimer).toBeCloseTo(7.9, 5);
+
+    tickGame(7.9);
+    expect(gameState.p1.ticketTimer).toBe(0);
+  });
+
   it("expires an unanswered ticket and reduces shared health", () => {
     gameState.p1.activeTicket = drawTicket(1);
 
     expect(expireTicket("p1")).toBe(true);
     expect(gameState.p1.activeTicket).toBeNull();
+    expect(gameState.p1.ticketTimer).toBe(0);
     expect(gameState.sharedHealth).toBe(100 - TICKET_EXPIRY_HEALTH_PENALTY);
     expect(gameState.expiredTickets).toEqual({ p1: 1, p2: 0 });
   });

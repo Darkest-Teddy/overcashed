@@ -13,7 +13,7 @@ import {
   initGame,
   resetGame,
   tickGame,
-  drawTicket,
+  assignTicket,
   expireTicket,
   missDeskDeadline,
   TICKET_DECISION_SECONDS,
@@ -314,7 +314,6 @@ function PlayerHUD({
   stationLabel,
   targetStation,
   travelSecondsLeft,
-  ticketSecondsLeft,
   confirmed,
 }: {
   player: "P1" | "P2";
@@ -331,12 +330,12 @@ function PlayerHUD({
   stationLabel: string | null;
   targetStation: Station | null;
   travelSecondsLeft: number;
-  ticketSecondsLeft: number;
   confirmed: boolean;
 }) {
   const roaming = !atStation;
   const atDeskWaiting = atStation && !confirmed; // at desk, hasn't pressed Q/M yet
   const atDeskTicketing = atStation && confirmed; // actively reviewing tickets
+  const ticketTimer = state.ticketTimer;
 
   return (
     <div
@@ -464,11 +463,11 @@ function PlayerHUD({
                       fontSize: 10,
                       fontWeight: 900,
                       letterSpacing: 1.2,
-                      color: ticketSecondsLeft <= 3 ? "#ef4444" : "#fbbf24",
+                      color: ticketTimer <= 3 ? "#ef4444" : "#fbbf24",
                     }}
                   >
                     <span>DECIDE NOW</span>
-                    <span>{ticketSecondsLeft.toFixed(1)}s</span>
+                    <span>{ticketTimer.toFixed(1)}s</span>
                   </div>
                   <div
                     style={{
@@ -476,21 +475,21 @@ function PlayerHUD({
                       overflow: "hidden",
                       borderRadius: 999,
                       background: "rgba(255,255,255,0.1)",
-                      border: ticketSecondsLeft <= 3
+                      border: ticketTimer <= 3
                         ? "1px solid rgba(239,68,68,0.6)"
                         : "1px solid rgba(251,191,36,0.35)",
                     }}
                   >
                     <div
                       style={{
-                        width: `${Math.max(0, Math.min(100, (ticketSecondsLeft / TICKET_DECISION_SECONDS) * 100))}%`,
+                        width: `${(ticketTimer / TICKET_DECISION_SECONDS) * 100}%`,
                         height: "100%",
                         borderRadius: 999,
-                        background: ticketSecondsLeft <= 3
+                        background: ticketTimer <= 3
                           ? "linear-gradient(90deg, #dc2626, #ef4444)"
                           : "linear-gradient(90deg, #f59e0b, #fbbf24)",
                         transition: "width 0.1s linear",
-                        boxShadow: ticketSecondsLeft <= 3
+                        boxShadow: ticketTimer <= 3
                           ? "0 0 12px rgba(239,68,68,0.75)"
                           : "none",
                       }}
@@ -846,7 +845,7 @@ function StartScreen() {
         </text>
       </svg>
       <div style={{ fontSize: 14, opacity: 0.5, maxWidth: 400, textAlign: "center", lineHeight: 1.6, color: "#e8e8ef" }}>
-        You have 60 seconds. Reach each assigned desk, then decide its ticket within 10 seconds or lose health.
+        You have 60 seconds. Reach each assigned desk, then decide its ticket within 8 seconds or lose health.
       </div>
       <div
         style={{
@@ -883,22 +882,15 @@ export function CoopGame() {
   const [targetStationIds, setTargetStationIds] = useState<TargetStationIds>([null, null]);
   const [p1Confirmed, setP1Confirmed] = useState(false);
   const [p2Confirmed, setP2Confirmed] = useState(false);
-  const [deadlineSnapshot, setDeadlineSnapshot] = useState<{
-    travel: [number, number];
-    ticket: [number, number];
-  }>({
-    travel: [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS],
-    ticket: [TICKET_DECISION_SECONDS, TICKET_DECISION_SECONDS],
-  });
+  const [deadlineSnapshot, setDeadlineSnapshot] = useState<[number, number]>([
+    DESK_TRAVEL_SECONDS,
+    DESK_TRAVEL_SECONDS,
+  ]);
   const targetStationIdsRef = useRef<TargetStationIds>([null, null]);
   const confirmedRef = useRef<[boolean, boolean]>([false, false]);
   const travelDeadlineRef = useRef<[number, number]>([
     DESK_TRAVEL_SECONDS,
     DESK_TRAVEL_SECONDS,
-  ]);
-  const ticketDeadlineRef = useRef<[number, number]>([
-    TICKET_DECISION_SECONDS,
-    TICKET_DECISION_SECONDS,
   ]);
   const reachedTargetRef = useRef<[boolean, boolean]>([false, false]);
   const prevPhaseRef = useRef(gameState.phase);
@@ -921,7 +913,6 @@ export function CoopGame() {
     const p1Target = pickStationId(new Set());
     const p2Target = pickStationId(new Set([p1Target]));
     travelDeadlineRef.current = [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS];
-    ticketDeadlineRef.current = [TICKET_DECISION_SECONDS, TICKET_DECISION_SECONDS];
     reachedTargetRef.current = [false, false];
     updateTargetStationIds([p1Target, p2Target]);
   }, [updateTargetStationIds]);
@@ -936,7 +927,6 @@ export function CoopGame() {
     const next: TargetStationIds = [...targetStationIdsRef.current];
     next[playerIndex] = nextTarget;
     travelDeadlineRef.current[playerIndex] = DESK_TRAVEL_SECONDS;
-    ticketDeadlineRef.current[playerIndex] = TICKET_DECISION_SECONDS;
     reachedTargetRef.current[playerIndex] = false;
     updateTargetStationIds(next);
   }, [updateTargetStationIds]);
@@ -964,7 +954,6 @@ export function CoopGame() {
           setDebrief("");
           prevPhaseRef.current = 1;
           travelDeadlineRef.current = [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS];
-          ticketDeadlineRef.current = [TICKET_DECISION_SECONDS, TICKET_DECISION_SECONDS];
           reachedTargetRef.current = [false, false];
           updateTargetStationIds([null, null]);
           updateConfirmed(0, false);
@@ -1065,12 +1054,7 @@ export function CoopGame() {
           if (!gameState.isRunning) break;
           const player = playerIndex === 0 ? "p1" : "p2";
           if (!gameState[player].activeTicket) continue;
-
-          ticketDeadlineRef.current[playerIndex] = Math.max(
-            0,
-            ticketDeadlineRef.current[playerIndex] - dt,
-          );
-          if (ticketDeadlineRef.current[playerIndex] > 0) continue;
+          if (gameState[player].ticketTimer > 0) continue;
           if (!expireTicket(player)) continue;
 
           updateConfirmed(playerIndex, false);
@@ -1088,13 +1072,10 @@ export function CoopGame() {
 
       if (gameState.isRunning) {
         setState(snap(gameState));
-        setDeadlineSnapshot({
-          travel: [
-            Math.ceil(travelDeadlineRef.current[0]),
-            Math.ceil(travelDeadlineRef.current[1]),
-          ],
-          ticket: [ticketDeadlineRef.current[0], ticketDeadlineRef.current[1]],
-        });
+        setDeadlineSnapshot([
+          Math.ceil(travelDeadlineRef.current[0]),
+          Math.ceil(travelDeadlineRef.current[1]),
+        ]);
       }
       raf = requestAnimationFrame(loop);
     };
@@ -1131,8 +1112,7 @@ export function CoopGame() {
         e.preventDefault();
         updateConfirmed(0, true);
         if (!gameState.p1.activeTicket) {
-          gameState.p1.activeTicket = drawTicket(gameState.phase);
-          ticketDeadlineRef.current[0] = TICKET_DECISION_SECONDS;
+          assignTicket("p1");
         }
         return;
       }
@@ -1148,8 +1128,7 @@ export function CoopGame() {
         e.preventDefault();
         updateConfirmed(1, true);
         if (!gameState.p2.activeTicket) {
-          gameState.p2.activeTicket = drawTicket(gameState.phase);
-          ticketDeadlineRef.current[1] = TICKET_DECISION_SECONDS;
+          assignTicket("p2");
         }
         return;
       }
@@ -1290,8 +1269,7 @@ export function CoopGame() {
               atStation={p1AtTarget}
               stationLabel={p1StationLabel}
               targetStation={STATIONS.find((station) => station.id === targetStationIds[0]) ?? null}
-              travelSecondsLeft={deadlineSnapshot.travel[0]}
-              ticketSecondsLeft={deadlineSnapshot.ticket[0]}
+              travelSecondsLeft={deadlineSnapshot[0]}
               confirmed={p1Confirmed}
             />
             <PlayerHUD
@@ -1308,8 +1286,7 @@ export function CoopGame() {
               atStation={p2AtTarget}
               stationLabel={p2StationLabel}
               targetStation={STATIONS.find((station) => station.id === targetStationIds[1]) ?? null}
-              travelSecondsLeft={deadlineSnapshot.travel[1]}
-              ticketSecondsLeft={deadlineSnapshot.ticket[1]}
+              travelSecondsLeft={deadlineSnapshot[1]}
               confirmed={p2Confirmed}
             />
           </div>
