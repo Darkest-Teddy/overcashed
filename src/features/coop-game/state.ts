@@ -20,6 +20,9 @@ const COLLIDERS: CanvasAabb[] = buildColliders(FURNITURE);
 const SPEED = 320; // canvas units / second — keep desk rotations fast-paced
 const R = PLAYER_CANVAS_RADIUS;
 
+/** Hard stop: x/y stay in [R, canvasSize - R]. */
+const clamp = (v: number, max: number) => Math.max(R, Math.min(max - R, v));
+
 // Two distinct skins (different seeds → different avatars).
 export const PLAYER_SKINS = [
   { seed: "coop-player-blue", color: "#4f9dff" },
@@ -29,6 +32,8 @@ export const PLAYER_SKINS = [
 const makePlayer = (index: number): RenderAgent => {
   const spawn = SPAWN_POINTS[index];
   const skin = PLAYER_SKINS[index];
+  const x = clamp(spawn.x, CANVAS_BOUNDS.w);
+  const y = clamp(spawn.y, CANVAS_BOUNDS.h);
   return {
     id: `player-${index + 1}`,
     name: index === 0 ? "Player 1" : "Player 2",
@@ -37,10 +42,10 @@ const makePlayer = (index: number): RenderAgent => {
     color: skin.color,
     item: "coffee",
     avatarProfile: createAgentAvatarProfileFromSeed(skin.seed),
-    x: spawn.x,
-    y: spawn.y,
-    targetX: spawn.x,
-    targetY: spawn.y,
+    x,
+    y,
+    targetX: x,
+    targetY: y,
     path: [],
     facing: spawn.facing,
     frame: 0,
@@ -132,8 +137,6 @@ const resolveAabb = (px: number, py: number, box: CanvasAabb): [number, number] 
   return [px, box.maxY + R];
 };
 
-const clamp = (v: number, max: number) => Math.max(2 * R, Math.min(max - 2 * R, v));
-
 export const stepGame = (dt: number) => {
   const maps = [P1_KEYS_FULL, P2_KEYS_FULL];
 
@@ -156,6 +159,9 @@ export const stepGame = (dt: number) => {
     }
     for (const box of COLLIDERS) {
       [p.x, p.y] = resolveAabb(p.x, p.y, box);
+      // resolveAabb can push outside the room — hard-stop after every write
+      p.x = clamp(p.x, CANVAS_BOUNDS.w);
+      p.y = clamp(p.y, CANVAS_BOUNDS.h);
     }
 
     // Update station proximity
