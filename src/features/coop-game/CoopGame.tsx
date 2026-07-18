@@ -275,7 +275,7 @@ function DeskArrow({
         <span style={{ color: "#facc15" }}>{targetStation.label}</span>
       </div>
       <div style={{ fontSize: 11, opacity: 0.5 }}>
-        Follow your {color === "#4f9dff" ? "blue" : "orange"} marker — {Math.round(distance)} units
+        Follow your {color === "#4f9dff" ? "blue" : "orange"} marker ({Math.round(distance)} units)
       </div>
       <div
         style={{
@@ -565,8 +565,59 @@ function KeyHint({ label, action, color }: { label: string; action: string; colo
 
 // ─── Win Screen ─────────────────────────────────────────────────────────────
 
+function getPerformanceFeedback(state: GameState) {
+  const combinedScore = state.p1.score + state.p2.score;
+  const failures =
+    state.wrongDecisions.length +
+    state.expiredTickets.p1 + state.expiredTickets.p2 +
+    state.missedDeskDeadlines.p1 + state.missedDeskDeadlines.p2;
+
+  if (combinedScore === 0) {
+    return {
+      tone: "negative" as const,
+      initials: "FO",
+      author: "Finance Operations",
+      source: "performance review",
+      quote: "No reviews were completed. The queue was left unattended, and the quarter remained exposed.",
+    };
+  }
+  if (failures === 0 && combinedScore >= 500) {
+    return {
+      tone: "positive" as const,
+      initials: "EG",
+      author: "Eric Glyman",
+      source: "via Slack",
+      quote: "The finance team moved quickly and kept the numbers clean. This is the standard we need.",
+    };
+  }
+  if (failures === 0) {
+    return {
+      tone: "neutral" as const,
+      initials: "FO",
+      author: "Finance Operations",
+      source: "performance review",
+      quote: "Decision quality was clean, but throughput was below target. More of the queue needed attention.",
+    };
+  }
+  return {
+    tone: failures >= 3 ? "negative" as const : "neutral" as const,
+    initials: "FO",
+    author: "Finance Operations",
+    source: "performance review",
+    quote: failures >= 3
+      ? "The round closed, but missed deadlines and unresolved reviews left the quarter at risk."
+      : "The team survived the round, but the exception rate still needs work.",
+  };
+}
+
 function WinScreen({ state, debrief }: { state: GameState; debrief: string }) {
   const combined = state.p1.score + state.p2.score;
+  const feedback = getPerformanceFeedback(state);
+  const feedbackColor = feedback.tone === "positive"
+    ? "74,222,128"
+    : feedback.tone === "negative"
+      ? "239,68,68"
+      : "251,191,36";
   return (
     <div
       style={{
@@ -587,8 +638,8 @@ function WinScreen({ state, debrief }: { state: GameState; debrief: string }) {
       <div
         style={{
           maxWidth: 600,
-          background: "rgba(74,21,75,0.25)",
-          border: "1px solid rgba(74,21,75,0.5)",
+          background: `rgba(${feedbackColor},0.1)`,
+          border: `1px solid rgba(${feedbackColor},0.35)`,
           borderRadius: 12,
           padding: "20px 24px",
           display: "flex",
@@ -599,20 +650,20 @@ function WinScreen({ state, debrief }: { state: GameState; debrief: string }) {
         <div
           style={{
             width: 44, height: 44, borderRadius: 8,
-            background: "linear-gradient(135deg, #611f69, #9b59b6)",
+            background: `rgba(${feedbackColor},0.25)`,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 20, fontWeight: 900, flexShrink: 0,
           }}
         >
-          EG
+          {feedback.initials}
         </div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>
-            Eric Glyman <span style={{ fontWeight: 400, opacity: 0.5, fontSize: 12 }}>via Slack</span>
+            {feedback.author}{" "}
+            <span style={{ fontWeight: 400, opacity: 0.5, fontSize: 12 }}>{feedback.source}</span>
           </div>
           <div style={{ fontSize: 15, lineHeight: 1.5, opacity: 0.9 }}>
-            &ldquo;I don&apos;t know how the finance team held it down today but the numbers are
-            perfect. This is why Ramp wins.&rdquo;
+            &ldquo;{feedback.quote}&rdquo;
           </div>
         </div>
       </div>
@@ -905,7 +956,7 @@ export function CoopGame() {
       }
 
       if (s.isOver && !resetTimerRef.current) {
-        const text = generateDebrief(s.wrongDecisions, s.totalDollarImpact);
+        const text = generateDebrief(s);
         setDebrief(text);
         resetTimerRef.current = setTimeout(() => {
           resetGame();

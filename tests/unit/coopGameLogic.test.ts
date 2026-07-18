@@ -11,6 +11,7 @@ import {
   resetGame,
   submitAnswer,
 } from "../../src/features/coop-game/game/gameLogic";
+import { generateDebrief } from "../../src/features/coop-game/ai/generateDebrief";
 
 describe("co-op game rotation rules", () => {
   beforeEach(() => {
@@ -33,6 +34,23 @@ describe("co-op game rotation rules", () => {
   it("starts a one-minute round", () => {
     expect(GAME_DURATION_SECONDS).toBe(60);
     expect(gameState.sharedTime).toBe(60);
+  });
+
+  it("reports inactivity as negative performance", () => {
+    const debrief = generateDebrief(gameState);
+
+    expect(debrief).toContain("No Work Completed");
+    expect(debrief).toContain("unacceptable");
+    expect(debrief).not.toContain("Flawless quarter");
+  });
+
+  it("keeps low-throughput clean performance neutral", () => {
+    gameState.p1.score = 100;
+
+    const debrief = generateDebrief(gameState);
+
+    expect(debrief).toContain("throughput was below target");
+    expect(debrief).not.toContain("Flawless quarter");
   });
 
   it("expires an unanswered ticket and reduces shared health", () => {

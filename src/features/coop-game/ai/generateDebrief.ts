@@ -1,16 +1,33 @@
 "use client";
 
-import type { WrongDecision } from "../game/gameLogic";
+import type { GameState } from "../game/gameLogic";
 
 /**
  * Generates a CFO-style debrief summarizing what went wrong.
  * Placeholder — swap in a real OpenAI / Anthropic call later.
  */
 export function generateDebrief(
-  wrongDecisions: WrongDecision[],
-  totalDollarImpact: number,
+  state: GameState,
 ): string {
-  if (wrongDecisions.length === 0) {
+  const wrongDecisions = state.wrongDecisions;
+  const combinedScore = state.p1.score + state.p2.score;
+  const missedDesks = state.missedDeskDeadlines.p1 + state.missedDeskDeadlines.p2;
+  const expiredTickets = state.expiredTickets.p1 + state.expiredTickets.p2;
+  const failures = wrongDecisions.length + missedDesks + expiredTickets;
+
+  if (combinedScore === 0) {
+    return [
+      "CFO DEBRIEF — No Work Completed",
+      "",
+      "No tickets were resolved during the round.",
+      `Missed desk deadlines: ${missedDesks}`,
+      `Expired tickets: ${expiredTickets}`,
+      "",
+      "Performance: unacceptable. The finance queue was left unattended.",
+    ].join("\n");
+  }
+
+  if (failures === 0 && combinedScore >= 500) {
     return "Flawless quarter. Zero exceptions flagged, zero dollars leaked. " +
       "The board will be thrilled — Ramp's controls held up under pressure.";
   }
@@ -22,10 +39,19 @@ export function generateDebrief(
   const lines: string[] = [
     `CFO DEBRIEF — Quarter-End Incident Report`,
     ``,
-    `Total financial exposure: $${totalDollarImpact.toLocaleString()}`,
-    `Errors logged: ${wrongDecisions.length}`,
+    `Team score: ${combinedScore.toLocaleString()}`,
+    `Total financial exposure: $${state.totalDollarImpact.toLocaleString()}`,
+    `Incorrect decisions: ${wrongDecisions.length}`,
+    `Expired tickets: ${expiredTickets}`,
+    `Missed desk deadlines: ${missedDesks}`,
     ``,
   ];
+
+  if (failures === 0) {
+    lines.push(
+      "Decision quality was clean, but throughput was below target. The team needs to resolve more of the queue."
+    );
+  }
 
   if (duplicates.length > 0) {
     lines.push(
@@ -46,10 +72,14 @@ export function generateDebrief(
     );
   }
 
-  lines.push(
-    ``,
-    `With Ramp, these ${wrongDecisions.length} errors never would have reached a human reviewer.`
-  );
+  if (failures > 0) {
+    lines.push(
+      ``,
+      state.didWin
+        ? "The team survived the round, but missed work and exceptions kept the quarter at risk."
+        : "The quarter ended below operational standards. Faster, more accurate review was required."
+    );
+  }
 
   return lines.join("\n");
 }
