@@ -32,6 +32,11 @@ function ensureKeyframes() {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = `
+    @font-face {
+      font-family: 'Luckiest Guy';
+      src: url('/fonts/LuckiestGuy-Regular.ttf') format('truetype');
+      font-display: swap;
+    }
     @keyframes pulse-red {
       0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
       50% { box-shadow: 0 0 20px 4px rgba(239,68,68,0.7); }
@@ -722,6 +727,49 @@ function LoseScreen({ state, debrief }: { state: GameState; debrief: string }) {
   );
 }
 
+// ─── Intro Splash ───────────────────────────────────────────────────────────
+// Plays the blueprint logo animation (public/overcashed-intro.html) once on
+// load, then hands off to the start screen. The iframe reports completion via
+// postMessage; a timer covers the case where it never loads.
+
+function IntroSplash({ onDone }: { onDone: () => void }) {
+  const [fading, setFading] = useState(false);
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    let fadeTimer: ReturnType<typeof setTimeout> | null = null;
+    const finish = () => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setFading(true);
+      fadeTimer = setTimeout(onDone, 450);
+    };
+    const onMsg = (e: MessageEvent) => {
+      if (e.data === "overcashed-intro-done") finish();
+    };
+    window.addEventListener("message", onMsg);
+    const fallback = setTimeout(finish, 7500);
+    return () => {
+      window.removeEventListener("message", onMsg);
+      clearTimeout(fallback);
+      if (fadeTimer) clearTimeout(fadeTimer);
+    };
+  }, [onDone]);
+
+  return (
+    <iframe
+      src="/overcashed-intro.html"
+      title="Overcashed intro"
+      style={{
+        position: "absolute", inset: 0, width: "100%", height: "100%",
+        border: 0, zIndex: 100, background: "transparent",
+        opacity: fading ? 0 : 1, transition: "opacity 0.45s ease",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 // ─── Start Screen ───────────────────────────────────────────────────────────
 
 function StartScreen() {
@@ -733,7 +781,19 @@ function StartScreen() {
         alignItems: "center", justifyContent: "center", gap: 20, zIndex: 40,
       }}
     >
-      <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: -1, color: "#fff" }}>OVERCASHED</div>
+      {/* logo lettering: chunky white caps with the deep-green sticker outline */}
+      <svg width="620" height="120" viewBox="0 0 620 120" style={{ transform: "rotate(-2deg)", overflow: "visible" }}>
+        <text
+          x="50%" y="82" textAnchor="middle"
+          fontFamily="'Luckiest Guy', 'Arial Black', sans-serif"
+          fontSize="68" fill="#FCFDFC"
+          stroke="#1F5F44" strokeWidth="11"
+          strokeLinejoin="round" paintOrder="stroke"
+          letterSpacing="2"
+        >
+          OVERCASHED!
+        </text>
+      </svg>
       <div style={{ fontSize: 14, opacity: 0.5, maxWidth: 400, textAlign: "center", lineHeight: 1.6, color: "#e8e8ef" }}>
         You have 60 seconds. Reach each assigned desk, then decide its ticket within 10 seconds or lose health.
       </div>
@@ -758,6 +818,8 @@ export function CoopGame() {
   useAmbientMusic();
 
   const [state, setState] = useState<GameState>(() => snap(gameState));
+  const [showIntro, setShowIntro] = useState(true);
+  const introActiveRef = useRef(true);
   const [p1Flash, setP1Flash] = useState<string | null>(null);
   const [p2Flash, setP2Flash] = useState<string | null>(null);
   const [shaking, setShaking] = useState(false);
@@ -995,6 +1057,9 @@ export function CoopGame() {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
 
+      // Ignore keys until the intro animation has finished.
+      if (introActiveRef.current) return;
+
       if (!gameState.isRunning && !gameState.isOver) {
         initGame();
         assignStartingDesks();
@@ -1143,6 +1208,15 @@ export function CoopGame() {
       )}
 
       {isIdle && <StartScreen />}
+
+      {showIntro && (
+        <IntroSplash
+          onDone={() => {
+            introActiveRef.current = false;
+            setShowIntro(false);
+          }}
+        />
+      )}
 
       {isPlaying && (
         <>
