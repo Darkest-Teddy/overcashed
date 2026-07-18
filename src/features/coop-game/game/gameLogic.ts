@@ -44,6 +44,7 @@ export type GameState = {
   p2: PlayerState;
   wrongDecisions: WrongDecision[];
   totalDollarImpact: number;
+  missedDeskDeadlines: { p1: number; p2: number };
 };
 
 // ─── Hardcoded ticket pool ──────────────────────────────────────────────────
@@ -251,6 +252,7 @@ const TICKET_POOL: Ticket[] = [
 const HEALTH_PENALTY: Record<string, number> = { easy: 15, medium: 20, hard: 30 };
 const SCORE_REWARD: Record<string, number> = { easy: 100, medium: 200, hard: 350 };
 const PHASE_THRESHOLDS = [0, 5, 12]; // phase 2 at 5 correct, phase 3 at 12
+export const DESK_MISS_HEALTH_PENALTY = 10;
 
 let ticketQueue: Ticket[] = [];
 
@@ -304,6 +306,7 @@ export const gameState: GameState = {
   p2: { score: 0, activeTicket: null },
   wrongDecisions: [],
   totalDollarImpact: 0,
+  missedDeskDeadlines: { p1: 0, p2: 0 },
 };
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -320,6 +323,7 @@ export function initGame() {
   gameState.p2 = { score: 0, activeTicket: null };
   gameState.wrongDecisions = [];
   gameState.totalDollarImpact = 0;
+  gameState.missedDeskDeadlines = { p1: 0, p2: 0 };
   notify();
 }
 
@@ -334,6 +338,26 @@ export function resetGame() {
   gameState.p2 = { score: 0, activeTicket: null };
   gameState.wrongDecisions = [];
   gameState.totalDollarImpact = 0;
+  gameState.missedDeskDeadlines = { p1: 0, p2: 0 };
+  notify();
+}
+
+/** Penalize a player who failed to reach their assigned desk in time. */
+export function missDeskDeadline(player: "p1" | "p2") {
+  if (!gameState.isRunning || gameState.isOver) return;
+
+  gameState.missedDeskDeadlines[player] += 1;
+  gameState.sharedHealth = Math.max(
+    0,
+    gameState.sharedHealth - DESK_MISS_HEALTH_PENALTY,
+  );
+
+  if (gameState.sharedHealth <= 0) {
+    gameState.isRunning = false;
+    gameState.isOver = true;
+    gameState.didWin = false;
+  }
+
   notify();
 }
 
@@ -376,8 +400,9 @@ export function submitAnswer(
     return "wrong";
   }
 
-  // Next ticket
-  ps.activeTicket = drawTicket(gameState.phase);
+  // The player must rotate to their next assigned desk before drawing another
+  // ticket. CoopGame assigns that desk after this decision is submitted.
+  ps.activeTicket = null;
   notify();
   return correct ? "correct" : "wrong";
 }

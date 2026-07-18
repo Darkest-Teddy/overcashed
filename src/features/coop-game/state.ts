@@ -17,7 +17,7 @@ import {
 export const FURNITURE: FurnitureItem[] = buildOfficeFurniture();
 const COLLIDERS: CanvasAabb[] = buildColliders(FURNITURE);
 
-const SPEED = 260; // canvas units / second
+const SPEED = 320; // canvas units / second — keep desk rotations fast-paced
 const R = PLAYER_CANVAS_RADIUS;
 
 // Two distinct skins (different seeds → different avatars).
@@ -92,15 +92,12 @@ export function nearestStation(px: number, py: number): Station | null {
 export const playerStations: [Station | null, Station | null] = [null, null];
 
 // ─── Movement ───────────────────────────────────────────────────────────────
-// When AT a station: A/D and Left/Right are ticket actions (handled in CoopGame).
-//   Movement is restricted to W/S (P1) and Up/Down (P2) so the player
-//   can walk away from the station.
-// When ROAMING: full WASD (P1) and full arrows (P2).
+// Movement is never locked at a station. CoopGame removes an action key from
+// this shared set when it is consumed as approve/reject, so the same physical
+// keys can still be used for movement while roaming.
 
 const P1_KEYS_FULL = { up: "w", down: "s", left: "a", right: "d" };
-const P1_KEYS_STATION = { up: "w", down: "s", left: "__none__", right: "__none__" };
 const P2_KEYS_FULL = { up: "arrowup", down: "arrowdown", left: "arrowleft", right: "arrowright" };
-const P2_KEYS_STATION = { up: "arrowup", down: "arrowdown", left: "__none__", right: "__none__" };
 
 const readAxis = (map: { up: string; down: string; left: string; right: string }) => {
   let dx = 0;
@@ -138,13 +135,7 @@ const resolveAabb = (px: number, py: number, box: CanvasAabb): [number, number] 
 const clamp = (v: number, max: number) => Math.max(R, Math.min(max - R, v));
 
 export const stepGame = (dt: number) => {
-  const p1AtStation = playerStations[0] !== null;
-  const p2AtStation = playerStations[1] !== null;
-
-  const maps = [
-    p1AtStation ? P1_KEYS_STATION : P1_KEYS_FULL,
-    p2AtStation ? P2_KEYS_STATION : P2_KEYS_FULL,
-  ];
+  const maps = [P1_KEYS_FULL, P2_KEYS_FULL];
 
   for (let i = 0; i < players.length; i++) {
     const p = players[i];

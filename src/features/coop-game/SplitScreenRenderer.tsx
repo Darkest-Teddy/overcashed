@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { toWorld } from "@/features/retro-office/core/geometry";
@@ -25,23 +25,25 @@ export function SplitScreenRenderer() {
   const { gl, scene, size } = useThree();
   const look = useRef(new THREE.Vector3());
   const desired = useRef(new THREE.Vector3());
+  const cams = useRef<[THREE.PerspectiveCamera, THREE.PerspectiveCamera] | null>(null);
 
-  const cams = useMemo(
-    () => [
+  useEffect(() => {
+    const nextCams: [THREE.PerspectiveCamera, THREE.PerspectiveCamera] = [
       new THREE.PerspectiveCamera(50, 1, 0.1, 300),
       new THREE.PerspectiveCamera(50, 1, 0.1, 300),
-    ],
-    [],
-  );
-
-  // Snap cameras to their players on first mount.
-  useMemo(() => {
-    placeCamera(cams[0], 0, 1, look.current, desired.current);
-    placeCamera(cams[1], 1, 1, look.current, desired.current);
-  }, [cams]);
+    ];
+    placeCamera(nextCams[0], 0, 1, look.current, desired.current);
+    placeCamera(nextCams[1], 1, 1, look.current, desired.current);
+    cams.current = nextCams;
+    return () => {
+      cams.current = null;
+    };
+  }, []);
 
   // priority 1 → R3F stops auto-rendering; we drive the render loop here.
   useFrame(() => {
+    if (!cams.current) return;
+
     // setViewport/setScissor take CSS pixels — three.js applies pixelRatio
     // itself. Passing device pixels double-scales on retina (right half lands
     // entirely off-canvas and the left half paints the whole screen zoomed).
@@ -54,7 +56,7 @@ export function SplitScreenRenderer() {
     gl.setScissorTest(true);
 
     for (let i = 0; i < 2; i++) {
-      const cam = cams[i];
+      const cam = cams.current[i];
       placeCamera(cam, i, 0.12, look.current, desired.current);
       if (cam.aspect !== aspect) {
         cam.aspect = aspect;
