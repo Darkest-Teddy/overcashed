@@ -135,7 +135,7 @@ const resolveAabb = (px: number, py: number, box: CanvasAabb): [number, number] 
   return [px, box.maxY + R];
 };
 
-const clamp = (v: number, max: number) => Math.max(R, Math.min(max - R, v));
+const clamp = (v: number, max: number) => Math.max(2 * R, Math.min(max - 2 * R, v));
 
 export const stepGame = (dt: number) => {
   const p1AtStation = playerStations[0] !== null;
