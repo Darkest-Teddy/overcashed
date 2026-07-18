@@ -1,5 +1,7 @@
 "use client";
 
+import { splitPool } from "@/ai/generateTicketPool.js";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type Ticket = {
@@ -50,206 +52,6 @@ export type GameState = {
   expiredTickets: { p1: number; p2: number };
 };
 
-// ─── Hardcoded ticket pool ──────────────────────────────────────────────────
-
-const TICKET_POOL: Ticket[] = [
-  // ── EASY ──
-  {
-    id: "dup-1",
-    task: "duplicate",
-    display: {
-      vendor: "Staples",
-      amount: 247.5,
-      description: "Office supplies Q3",
-      invoice_number: "INV-4821",
-      second_invoice: { vendor: "Staples", amount: 247.5, invoice_number: "INV-4821" },
-    },
-    correct_answer: "reject",
-    dollar_impact: 247.5,
-    ramp_feature: "Duplicate Detection",
-    difficulty: "easy",
-  },
-  {
-    id: "fraud-1",
-    task: "fraud",
-    display: {
-      vendor: "AMZN*MKTPLACE",
-      amount: 3999.0,
-      description: "Personal electronics purchase",
-    },
-    correct_answer: "reject",
-    dollar_impact: 3999.0,
-    ramp_feature: "Merchant Lock",
-    difficulty: "easy",
-  },
-  {
-    id: "budget-1",
-    task: "budget",
-    display: {
-      vendor: "WeWork",
-      amount: 12400,
-      description: "Monthly coworking space — 15 seats",
-    },
-    correct_answer: "reject",
-    dollar_impact: 4400,
-    ramp_feature: "Spend Limits",
-    difficulty: "easy",
-  },
-  {
-    id: "dup-2",
-    task: "duplicate",
-    display: {
-      vendor: "AWS",
-      amount: 8420.0,
-      description: "Cloud hosting — June",
-      invoice_number: "AWS-0612",
-      second_invoice: { vendor: "AWS", amount: 8420.0, invoice_number: "AWS-0612" },
-    },
-    correct_answer: "reject",
-    dollar_impact: 8420.0,
-    ramp_feature: "Duplicate Detection",
-    difficulty: "easy",
-  },
-  // ── MEDIUM ──
-  {
-    id: "fraud-2",
-    task: "fraud",
-    display: {
-      vendor: "Best Buy",
-      amount: 1849.99,
-      description: "75\" OLED TV — 'conference room'",
-    },
-    correct_answer: "reject",
-    dollar_impact: 1849.99,
-    ramp_feature: "Merchant Lock",
-    difficulty: "medium",
-  },
-  {
-    id: "budget-2",
-    task: "budget",
-    display: {
-      vendor: "Figma",
-      amount: 4200,
-      description: "Enterprise upgrade — design team",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: "Spend Limits",
-    difficulty: "medium",
-  },
-  {
-    id: "dup-3",
-    task: "duplicate",
-    display: {
-      vendor: "Uber Eats",
-      amount: 342.18,
-      description: "Team lunch Friday",
-      invoice_number: "UE-7891",
-      second_invoice: { vendor: "Uber Eats", amount: 187.42, invoice_number: "UE-7834" },
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: "Duplicate Detection",
-    difficulty: "medium",
-  },
-  {
-    id: "fraud-3",
-    task: "fraud",
-    display: {
-      vendor: "Delta Airlines",
-      amount: 2100.0,
-      description: "First class ticket — SFO to NYC",
-    },
-    correct_answer: "reject",
-    dollar_impact: 2100.0,
-    ramp_feature: "Policy Enforcement",
-    difficulty: "medium",
-  },
-  {
-    id: "budget-3",
-    task: "budget",
-    display: {
-      vendor: "Salesforce",
-      amount: 18750,
-      description: "Annual CRM license renewal",
-    },
-    correct_answer: "approve",
-    dollar_impact: 0,
-    ramp_feature: "Spend Limits",
-    difficulty: "medium",
-  },
-  // ── HARD ──
-  {
-    id: "dup-4",
-    task: "duplicate",
-    display: {
-      vendor: "Google Cloud",
-      amount: 15230.0,
-      description: "Cloud infra — June billing",
-      invoice_number: "GCP-2406A",
-      second_invoice: { vendor: "Google Cloud Platform", amount: 15230.0, invoice_number: "GCP-2406B" },
-    },
-    correct_answer: "reject",
-    dollar_impact: 15230.0,
-    ramp_feature: "Duplicate Detection",
-    difficulty: "hard",
-  },
-  {
-    id: "fraud-4",
-    task: "fraud",
-    display: {
-      vendor: "Supreme NYC",
-      amount: 6800.0,
-      description: "Company merch order — 'brand alignment'",
-    },
-    correct_answer: "reject",
-    dollar_impact: 6800.0,
-    ramp_feature: "Merchant Lock",
-    difficulty: "hard",
-  },
-  {
-    id: "budget-4",
-    task: "budget",
-    display: {
-      vendor: "Hetzner",
-      amount: 32000,
-      description: "Bare metal GPU cluster — ML training",
-    },
-    correct_answer: "reject",
-    dollar_impact: 12000,
-    ramp_feature: "Spend Limits",
-    difficulty: "hard",
-  },
-  {
-    id: "fraud-5",
-    task: "fraud",
-    display: {
-      vendor: "Expedia",
-      amount: 4200.0,
-      description: "Resort booking — Cancún, 7 nights",
-    },
-    correct_answer: "reject",
-    dollar_impact: 4200.0,
-    ramp_feature: "Policy Enforcement",
-    difficulty: "hard",
-  },
-  {
-    id: "dup-5",
-    task: "duplicate",
-    display: {
-      vendor: "Anthropic",
-      amount: 22500.0,
-      description: "API credits — July",
-      invoice_number: "ANT-0701",
-      second_invoice: { vendor: "Anthropic", amount: 22500.0, invoice_number: "ANT-0701" },
-    },
-    correct_answer: "reject",
-    dollar_impact: 22500.0,
-    ramp_feature: "Duplicate Detection",
-    difficulty: "hard",
-  },
-];
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const HEALTH_PENALTY: Record<string, number> = { easy: 15, medium: 20, hard: 30 };
@@ -260,10 +62,14 @@ export const TICKET_EXPIRY_HEALTH_PENALTY = 15;
 export const TICKET_DECISION_SECONDS = 8;
 export const GAME_DURATION_SECONDS = 60;
 
-let ticketQueue: Ticket[] = [];
+/** Per-player pools from splitPool(); queues are the remaining draw order. */
+let p1Pool: Ticket[] = [];
+let p2Pool: Ticket[] = [];
+let p1Queue: Ticket[] = [];
+let p2Queue: Ticket[] = [];
 
-function shufflePool(): Ticket[] {
-  const arr = [...TICKET_POOL];
+function shuffleTickets(source: Ticket[]): Ticket[] {
+  const arr = [...source];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
@@ -271,22 +77,41 @@ function shufflePool(): Ticket[] {
   return arr;
 }
 
-export function drawTicket(phase: number): Ticket {
+function queueFor(player: "p1" | "p2"): Ticket[] {
+  return player === "p1" ? p1Queue : p2Queue;
+}
+
+function setQueue(player: "p1" | "p2", queue: Ticket[]) {
+  if (player === "p1") p1Queue = queue;
+  else p2Queue = queue;
+}
+
+function refillQueue(player: "p1" | "p2"): Ticket[] {
+  const pool = player === "p1" ? p1Pool : p2Pool;
+  const queue = shuffleTickets(pool);
+  setQueue(player, queue);
+  return queue;
+}
+
+export function drawTicket(phase: number, player: "p1" | "p2" = "p1"): Ticket {
   // Filter by difficulty for current phase, fall back to anything
   const allowed: Set<string> =
     phase === 1 ? new Set(["easy"]) :
     phase === 2 ? new Set(["easy", "medium"]) :
     new Set(["easy", "medium", "hard"]);
 
-  // Refill if empty
-  if (ticketQueue.length === 0) ticketQueue = shufflePool();
+  let queue = queueFor(player);
+  if (queue.length === 0) queue = refillQueue(player);
 
-  const idx = ticketQueue.findIndex((t) => allowed.has(t.difficulty));
-  if (idx >= 0) return ticketQueue.splice(idx, 1)[0];
+  const idx = queue.findIndex((t) => allowed.has(t.difficulty));
+  if (idx >= 0) {
+    const [ticket] = queue.splice(idx, 1);
+    return ticket;
+  }
 
   // Absolute fallback
-  if (ticketQueue.length === 0) ticketQueue = shufflePool();
-  return ticketQueue.pop()!;
+  if (queue.length === 0) queue = refillQueue(player);
+  return queue.pop()!;
 }
 
 // ─── Listeners ──────────────────────────────────────────────────────────────
@@ -318,8 +143,14 @@ export const gameState: GameState = {
 
 // ─── Actions ────────────────────────────────────────────────────────────────
 
-export function initGame() {
-  ticketQueue = shufflePool();
+/** Loads split ticket pools and starts a fresh round. */
+export async function initGame() {
+  const { p1Pool: splitP1, p2Pool: splitP2 } = await splitPool();
+  p1Pool = splitP1 as Ticket[];
+  p2Pool = splitP2 as Ticket[];
+  p1Queue = shuffleTickets(p1Pool);
+  p2Queue = shuffleTickets(p2Pool);
+
   gameState.sharedHealth = 100;
   gameState.sharedTime = GAME_DURATION_SECONDS;
   gameState.isRunning = true;
@@ -372,7 +203,7 @@ export function missDeskDeadline(player: "p1" | "p2") {
 
 /** Draw a ticket for a player and start their decision timer. */
 export function assignTicket(player: "p1" | "p2"): Ticket {
-  const ticket = drawTicket(gameState.phase);
+  const ticket = drawTicket(gameState.phase, player);
   gameState[player].activeTicket = ticket;
   gameState[player].ticketTimer = TICKET_DECISION_SECONDS;
   notify();

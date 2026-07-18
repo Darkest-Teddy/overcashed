@@ -17,8 +17,8 @@ import {
 import { generateDebrief } from "../../src/features/coop-game/ai/generateDebrief";
 
 describe("co-op game rotation rules", () => {
-  beforeEach(() => {
-    initGame();
+  beforeEach(async () => {
+    await initGame();
   });
 
   afterEach(() => {
@@ -26,7 +26,7 @@ describe("co-op game rotation rules", () => {
   });
 
   it("clears a completed ticket so the UI must rotate to another desk", () => {
-    const ticket = drawTicket(1);
+    const ticket = drawTicket(1, "p1");
     gameState.p1.activeTicket = ticket;
 
     expect(submitAnswer("p1", ticket.correct_answer)).toBe("correct");
@@ -71,7 +71,7 @@ describe("co-op game rotation rules", () => {
   });
 
   it("expires an unanswered ticket and reduces shared health", () => {
-    gameState.p1.activeTicket = drawTicket(1);
+    gameState.p1.activeTicket = drawTicket(1, "p1");
 
     expect(expireTicket("p1")).toBe(true);
     expect(gameState.p1.activeTicket).toBeNull();

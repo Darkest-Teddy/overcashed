@@ -2,8 +2,6 @@
  * Ticket pool for Overcashed — live OpenAI with hardcoded fallback.
  */
 
-import OpenAI from "openai";
-
 const RAMP_DUPLICATE =
   "Ramp duplicate detection compares invoice numbers and amounts against payment history and flags them before they process";
 
@@ -747,6 +745,7 @@ async function fetchLiveTickets() {
     throw new Error("OPENAI_API_KEY is not set");
   }
 
+  const { default: OpenAI } = await import("openai");
   const openai = new OpenAI({ apiKey });
   const deadline = Date.now() + 6000;
   let lastError;

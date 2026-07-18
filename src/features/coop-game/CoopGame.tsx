@@ -1086,6 +1086,7 @@ export function CoopGame() {
   // Q/M toggle desk mode. A/D and Left/Right are only consumed as decisions
   // while that player is actively reviewing at their assigned desk.
   useEffect(() => {
+    let starting = false;
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
 
@@ -1093,9 +1094,16 @@ export function CoopGame() {
       if (introActiveRef.current) return;
 
       if (!gameState.isRunning && !gameState.isOver) {
-        initGame();
-        assignStartingDesks();
+        if (starting) return;
+        starting = true;
         e.preventDefault();
+        void initGame()
+          .then(() => {
+            assignStartingDesks();
+          })
+          .finally(() => {
+            starting = false;
+          });
         return;
       }
 
