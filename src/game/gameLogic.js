@@ -112,8 +112,8 @@ export function spawnNextTicket(player) {
 /**
  * Starts a fresh round: split pools, reset state, spawn both tickets.
  */
-export function initGame() {
-  const { p1Pool, p2Pool } = splitPool();
+export async function initGame() {
+  const { p1Pool, p2Pool } = await splitPool();
 
   Object.assign(gameState, createInitialState());
   resetInternal();
@@ -213,8 +213,8 @@ export function endGame() {
 /**
  * Full reset for booth auto-loop — resets state then starts a new round.
  */
-export function resetGame() {
+export async function resetGame() {
   Object.assign(gameState, createInitialState());
   resetInternal();
-  initGame();
+  await initGame();
 }

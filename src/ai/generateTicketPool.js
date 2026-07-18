@@ -1,8 +1,8 @@
 /**
- * Hardcoded ticket pool for Overcashed.
- * // TODO: swap hardcoded pool for live OpenAI call
- * // when API key is available.
+ * Ticket pool for Overcashed — live OpenAI with hardcoded fallback.
  */
+
+import OpenAI from "openai";
 
 const RAMP_DUPLICATE =
   "Ramp duplicate detection compares invoice numbers and amounts against payment history and flags them before they process";
@@ -632,11 +632,11 @@ function shuffle(arr) {
 }
 
 /**
- * Returns the full hardcoded ticket pool (40 tickets).
+ * Returns a deep-cloned copy of the hardcoded ticket pool (40 tickets).
+ * Kept as the permanent fallback — never delete.
  * @returns {object[]}
  */
-export function getTicketPool() {
-  // TODO: swap hardcoded pool for live OpenAI call when API key is available.
+export function getHardcodedPool() {
   return TICKET_POOL.map((t) => ({
     ...t,
     display: {
@@ -648,12 +648,199 @@ export function getTicketPool() {
   }));
 }
 
+const TICKET_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    tickets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          task: { type: "string", enum: ["duplicate", "fraud", "budget"] },
+          display: {
+            type: "object",
+            properties: {
+              vendor: { type: "string" },
+              amount: { type: "number" },
+              description: { type: "string" },
+              invoice_number: { type: "string" },
+              second_invoice: {
+                anyOf: [
+                  {
+                    type: "object",
+                    properties: {
+                      vendor: { type: "string" },
+                      amount: { type: "number" },
+                      invoice_number: { type: "string" },
+                    },
+                    required: ["vendor", "amount", "invoice_number"],
+                    additionalProperties: false,
+                  },
+                  { type: "null" },
+                ],
+              },
+            },
+            required: [
+              "vendor",
+              "amount",
+              "description",
+              "invoice_number",
+              "second_invoice",
+            ],
+            additionalProperties: false,
+          },
+          correct_answer: { type: "string", enum: ["approve", "reject"] },
+          dollar_impact: { type: "number" },
+          ramp_feature: { type: "string" },
+          difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
+        },
+        required: [
+          "id",
+          "task",
+          "display",
+          "correct_answer",
+          "dollar_impact",
+          "ramp_feature",
+          "difficulty",
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["tickets"],
+  additionalProperties: false,
+};
+
+const LIVE_TICKET_PROMPT = `Generate exactly 40 AP review tickets for a co-op finance game matching this frozen shape:
+{
+  id: string,
+  task: "duplicate" | "fraud" | "budget",
+  display: {
+    vendor: string,
+    amount: number,
+    description: string,
+    invoice_number: string,
+    second_invoice?: { vendor, amount, invoice_number }  // only for duplicate-reject tickets; otherwise null
+  },
+  correct_answer: "approve" | "reject",
+  dollar_impact: number,  // 0 when correct_answer is approve; otherwise the exposure amount
+  ramp_feature: string,   // which Ramp product feature would catch this
+  difficulty: "easy" | "medium" | "hard"
+}
+
+Composition (exact counts):
+- 7 duplicate legitimate (approve) — unique real SaaS/office vendors
+- 7 duplicate reject — altered invoice_number / amount with second_invoice showing the prior legitimate invoice
+- 13 fraud reject — spoofed domains, fake vendors, or wire-transfer urgency
+- 7 budget reject — over policy limits (mention limit in description; dollar_impact = amount - limit)
+- 6 budget approve — under policy limits
+
+Use realistic vendor names and dollar amounts. Set second_invoice to null when not needed.
+ramp_feature should name a concrete Ramp capability (duplicate detection, behavioral risk monitoring, or spend controls).`;
+
+/**
+ * Fetch 40 tickets from OpenAI gpt-4o (json_schema strict).
+ * 2 attempts max, 6s total timeout. Throws on failure.
+ * @returns {Promise<object[]>}
+ */
+async function fetchLiveTickets() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is not set");
+  }
+
+  const openai = new OpenAI({ apiKey });
+  const deadline = Date.now() + 6000;
+  let lastError;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw lastError || new Error("OpenAI ticket fetch timed out");
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remaining);
+
+    try {
+      const response = await openai.chat.completions.create(
+        {
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You generate structured AP ticket pools for a finance training game. Return only schema-valid JSON.",
+            },
+            { role: "user", content: LIVE_TICKET_PROMPT },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "ticket_pool",
+              strict: true,
+              schema: TICKET_JSON_SCHEMA,
+            },
+          },
+        },
+        { signal: controller.signal }
+      );
+
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("Empty OpenAI response");
+      }
+
+      const parsed = JSON.parse(content);
+      const tickets = parsed?.tickets;
+      if (!Array.isArray(tickets) || tickets.length !== 40) {
+        throw new Error(
+          `Expected 40 tickets, got ${Array.isArray(tickets) ? tickets.length : typeof tickets}`
+        );
+      }
+
+      return tickets.map((t) => {
+        const display = { ...t.display };
+        if (display.second_invoice) {
+          display.second_invoice = { ...display.second_invoice };
+        } else {
+          delete display.second_invoice;
+        }
+        return { ...t, display };
+      });
+    } catch (err) {
+      lastError = err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw lastError || new Error("OpenAI ticket fetch failed");
+}
+
+/**
+ * Returns the full ticket pool (40 tickets) — live OpenAI with hardcoded fallback.
+ * @returns {Promise<object[]>}
+ */
+export async function getTicketPool() {
+  try {
+    return await fetchLiveTickets();
+  } catch (err) {
+    console.warn(
+      "[generateTicketPool] Live OpenAI fetch failed; using hardcoded pool.",
+      err
+    );
+    return getHardcodedPool();
+  }
+}
+
 /**
  * Splits the pool into two independent piles of 20 for p1 and p2.
- * @returns {{ p1Pool: object[], p2Pool: object[] }}
+ * @returns {Promise<{ p1Pool: object[], p2Pool: object[] }>}
  */
-export function splitPool() {
-  const shuffled = shuffle(getTicketPool());
+export async function splitPool() {
+  const shuffled = shuffle(await getTicketPool());
   return {
     p1Pool: shuffled.slice(0, 20),
     p2Pool: shuffled.slice(20, 40),

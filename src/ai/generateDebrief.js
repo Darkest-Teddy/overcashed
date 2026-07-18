@@ -1,7 +1,8 @@
 /**
- * Mock post-game debrief for Overcashed.
- * // TODO: replace mock with OpenAI call when API key is available
+ * Post-game debrief for Overcashed — live OpenAI with mock fallback.
  */
+
+import OpenAI from "openai";
 
 function formatDollars(n) {
   const rounded = Math.round(n * 100) / 100;
@@ -17,16 +18,13 @@ function plural(n, one, many) {
 }
 
 /**
- * Build a dynamic 3-sentence debrief from wrong decisions.
- * Sentence 3 uses ramp_feature from the most expensive miss.
+ * Build a dynamic 3-sentence debrief from wrong decisions (mock fallback).
  *
  * @param {Array<{ ticket?: object, dollar_impact?: number } | object>} wrongDecisions
  * @param {number} totalDollarImpact
- * @returns {Promise<string>}
+ * @returns {string}
  */
-export async function generateDebrief(wrongDecisions, totalDollarImpact) {
-  // TODO: replace mock with OpenAI call when API key is available
-
+function getMockDebrief(wrongDecisions, totalDollarImpact) {
   const decisions = Array.isArray(wrongDecisions) ? wrongDecisions : [];
   const count = decisions.length;
   const impact = Number(totalDollarImpact) || 0;
@@ -136,4 +134,102 @@ export async function generateDebrief(wrongDecisions, totalDollarImpact) {
     : `${rampFeature.trim()}.`;
 
   return `${sentence1} ${sentence2} ${sentence3}`;
+}
+
+function highestImpactRampFeature(wrongDecisions) {
+  const decisions = Array.isArray(wrongDecisions) ? wrongDecisions : [];
+  let best = null;
+  let bestImpact = -Infinity;
+
+  for (const d of decisions) {
+    const ticket = d && d.ticket ? d.ticket : d;
+    const dollar_impact =
+      d && typeof d.dollar_impact === "number"
+        ? d.dollar_impact
+        : ticket && typeof ticket.dollar_impact === "number"
+          ? ticket.dollar_impact
+          : 0;
+    if (dollar_impact > bestImpact) {
+      bestImpact = dollar_impact;
+      best = ticket;
+    }
+  }
+
+  return (best && best.ramp_feature) || null;
+}
+
+/**
+ * Fetch a live 3-sentence CFO debrief from OpenAI.
+ * 2 attempts max. Throws on failure.
+ *
+ * @param {Array} wrongDecisions
+ * @param {number} totalDollarImpact
+ * @returns {Promise<string>}
+ */
+async function fetchLiveDebrief(wrongDecisions, totalDollarImpact) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is not set");
+  }
+
+  const openai = new OpenAI({ apiKey });
+  const rampFeature = highestImpactRampFeature(wrongDecisions);
+  const impact = Number(totalDollarImpact) || 0;
+
+  const systemPrompt =
+    "You are the CFO of Ramp reviewing finance decisions " +
+    "after a chaotic quarter-close. Write exactly 3 sentences:\n" +
+    "1. What went wrong and how many mistakes\n" +
+    "2. The exact dollar cost or exposure\n" +
+    "3. Which specific Ramp feature catches this automatically\n" +
+    "No bullet points. No preamble. Exactly 3 sentences.";
+
+  const userPrompt =
+    `wrongDecisions:\n${JSON.stringify(wrongDecisions ?? [], null, 2)}\n\n` +
+    `totalDollarImpact: ${formatDollars(impact)}\n\n` +
+    `ramp_feature (from highest dollar_impact wrong decision): ${rampFeature ?? "unknown"}`;
+
+  let lastError;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      });
+
+      const content = response.choices?.[0]?.message?.content?.trim();
+      if (!content) {
+        throw new Error("Empty OpenAI debrief response");
+      }
+      return content;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("OpenAI debrief fetch failed");
+}
+
+/**
+ * Build a dynamic 3-sentence debrief from wrong decisions.
+ * Sentence 3 uses ramp_feature from the most expensive miss.
+ *
+ * @param {Array<{ ticket?: object, dollar_impact?: number } | object>} wrongDecisions
+ * @param {number} totalDollarImpact
+ * @returns {Promise<string>}
+ */
+export async function generateDebrief(wrongDecisions, totalDollarImpact) {
+  try {
+    return await fetchLiveDebrief(wrongDecisions, totalDollarImpact);
+  } catch (err) {
+    console.warn(
+      "[generateDebrief] Live OpenAI fetch failed; using mock debrief.",
+      err
+    );
+    return getMockDebrief(wrongDecisions, totalDollarImpact);
+  }
 }
