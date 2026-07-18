@@ -14,7 +14,9 @@ import {
   resetGame,
   tickGame,
   drawTicket,
+  expireTicket,
   missDeskDeadline,
+  TICKET_DECISION_SECONDS,
   subscribe,
 } from "./game/gameLogic";
 import type { GameState } from "./game/gameLogic";
@@ -87,6 +89,7 @@ function snap(gs: GameState): GameState {
     p2: { ...gs.p2 },
     wrongDecisions: [...gs.wrongDecisions],
     missedDeskDeadlines: { ...gs.missedDeskDeadlines },
+    expiredTickets: { ...gs.expiredTickets },
   };
 }
 
@@ -177,11 +180,13 @@ function TopBar({ health, time, phase }: { health: number; time: number; phase: 
 
       <div
         style={{
-          fontSize: 32,
+          fontSize: 44,
           fontWeight: 900,
           fontVariantNumeric: "tabular-nums",
-          color: time <= 30 ? "#ef4444" : time <= 60 ? "#fbbf24" : "#fff",
-          minWidth: 80,
+          color: time <= 45 ? "#ef4444" : "#fff",
+          textShadow: time <= 45 ? "0 0 18px rgba(239,68,68,0.7)" : "none",
+          animation: time <= 10 ? "pulse-health 0.55s ease-in-out infinite" : undefined,
+          minWidth: 120,
           textAlign: "center",
         }}
       >
@@ -249,13 +254,20 @@ function DeskArrow({
           fontSize: 14,
           fontWeight: 800,
           letterSpacing: 1,
-          color: "#fbbf24",
+          color: "#fff",
           textTransform: "uppercase",
           textAlign: "center",
-          textShadow: "0 0 12px rgba(251,191,36,0.5)",
+          textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+          background: "rgba(8,10,16,0.9)",
+          border: "1px solid rgba(255,255,255,0.24)",
+          borderRadius: 999,
+          padding: "8px 15px",
+          boxShadow: "0 5px 18px rgba(0,0,0,0.45)",
+          backdropFilter: "blur(6px)",
         }}
       >
-        GO TO {targetStation.label}
+        <span style={{ opacity: 0.72 }}>GO TO</span>{" "}
+        <span style={{ color: "#facc15" }}>{targetStation.label}</span>
       </div>
       <div style={{ fontSize: 11, opacity: 0.5 }}>
         Follow your {color === "#4f9dff" ? "blue" : "orange"} marker — {Math.round(distance)} units
@@ -297,6 +309,7 @@ function PlayerHUD({
   stationLabel,
   targetStation,
   travelSecondsLeft,
+  ticketSecondsLeft,
   confirmed,
 }: {
   player: "P1" | "P2";
@@ -313,6 +326,7 @@ function PlayerHUD({
   stationLabel: string | null;
   targetStation: Station | null;
   travelSecondsLeft: number;
+  ticketSecondsLeft: number;
   confirmed: boolean;
 }) {
   const roaming = !atStation;
@@ -434,7 +448,51 @@ function PlayerHUD({
               </div>
             )}
             {state.activeTicket ? (
-              <TicketCard ticket={state.activeTicket} />
+              <>
+                <TicketCard ticket={state.activeTicket} />
+                <div style={{ marginTop: 12 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 5,
+                      fontSize: 10,
+                      fontWeight: 900,
+                      letterSpacing: 1.2,
+                      color: ticketSecondsLeft <= 3 ? "#ef4444" : "#fbbf24",
+                    }}
+                  >
+                    <span>DECIDE NOW</span>
+                    <span>{ticketSecondsLeft.toFixed(1)}s</span>
+                  </div>
+                  <div
+                    style={{
+                      height: 9,
+                      overflow: "hidden",
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.1)",
+                      border: ticketSecondsLeft <= 3
+                        ? "1px solid rgba(239,68,68,0.6)"
+                        : "1px solid rgba(251,191,36,0.35)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.max(0, Math.min(100, (ticketSecondsLeft / TICKET_DECISION_SECONDS) * 100))}%`,
+                        height: "100%",
+                        borderRadius: 999,
+                        background: ticketSecondsLeft <= 3
+                          ? "linear-gradient(90deg, #dc2626, #ef4444)"
+                          : "linear-gradient(90deg, #f59e0b, #fbbf24)",
+                        transition: "width 0.1s linear",
+                        boxShadow: ticketSecondsLeft <= 3
+                          ? "0 0 12px rgba(239,68,68,0.75)"
+                          : "none",
+                      }}
+                    />
+                  </div>
+                </div>
+              </>
             ) : (
               <div style={{ opacity: 0.3, fontSize: 14, textAlign: "center", padding: 12 }}>
                 Waiting for ticket…
@@ -677,7 +735,7 @@ function StartScreen() {
     >
       <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: -1, color: "#fff" }}>OVERCASHED</div>
       <div style={{ fontSize: 14, opacity: 0.5, maxWidth: 400, textAlign: "center", lineHeight: 1.6, color: "#e8e8ef" }}>
-        Follow your color to the assigned desk, clear its task, then sprint to the next one before time runs out.
+        You have 60 seconds. Reach each assigned desk, then decide its ticket within 10 seconds or lose health.
       </div>
       <div
         style={{
@@ -712,11 +770,22 @@ export function CoopGame() {
   const [targetStationIds, setTargetStationIds] = useState<TargetStationIds>([null, null]);
   const [p1Confirmed, setP1Confirmed] = useState(false);
   const [p2Confirmed, setP2Confirmed] = useState(false);
+  const [deadlineSnapshot, setDeadlineSnapshot] = useState<{
+    travel: [number, number];
+    ticket: [number, number];
+  }>({
+    travel: [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS],
+    ticket: [TICKET_DECISION_SECONDS, TICKET_DECISION_SECONDS],
+  });
   const targetStationIdsRef = useRef<TargetStationIds>([null, null]);
   const confirmedRef = useRef<[boolean, boolean]>([false, false]);
   const travelDeadlineRef = useRef<[number, number]>([
     DESK_TRAVEL_SECONDS,
     DESK_TRAVEL_SECONDS,
+  ]);
+  const ticketDeadlineRef = useRef<[number, number]>([
+    TICKET_DECISION_SECONDS,
+    TICKET_DECISION_SECONDS,
   ]);
   const reachedTargetRef = useRef<[boolean, boolean]>([false, false]);
   const prevPhaseRef = useRef(gameState.phase);
@@ -739,6 +808,7 @@ export function CoopGame() {
     const p1Target = pickStationId(new Set());
     const p2Target = pickStationId(new Set([p1Target]));
     travelDeadlineRef.current = [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS];
+    ticketDeadlineRef.current = [TICKET_DECISION_SECONDS, TICKET_DECISION_SECONDS];
     reachedTargetRef.current = [false, false];
     updateTargetStationIds([p1Target, p2Target]);
   }, [updateTargetStationIds]);
@@ -753,6 +823,7 @@ export function CoopGame() {
     const next: TargetStationIds = [...targetStationIdsRef.current];
     next[playerIndex] = nextTarget;
     travelDeadlineRef.current[playerIndex] = DESK_TRAVEL_SECONDS;
+    ticketDeadlineRef.current[playerIndex] = TICKET_DECISION_SECONDS;
     reachedTargetRef.current[playerIndex] = false;
     updateTargetStationIds(next);
   }, [updateTargetStationIds]);
@@ -780,6 +851,7 @@ export function CoopGame() {
           setDebrief("");
           prevPhaseRef.current = 1;
           travelDeadlineRef.current = [DESK_TRAVEL_SECONDS, DESK_TRAVEL_SECONDS];
+          ticketDeadlineRef.current = [TICKET_DECISION_SECONDS, TICKET_DECISION_SECONDS];
           reachedTargetRef.current = [false, false];
           updateTargetStationIds([null, null]);
           updateConfirmed(0, false);
@@ -859,6 +931,7 @@ export function CoopGame() {
       if (gameState.isRunning) {
         const targetIds = targetStationIdsRef.current;
         for (const playerIndex of [0, 1] as const) {
+          if (!gameState.isRunning) break;
           if (!targetIds[playerIndex] || reachedTargetRef.current[playerIndex]) continue;
 
           travelDeadlineRef.current[playerIndex] = Math.max(
@@ -873,6 +946,25 @@ export function CoopGame() {
           if (gameState.isRunning) rotatePlayerDesk(playerIndex);
         }
 
+        // Once a ticket is opened its decision clock keeps running, even if
+        // the player steps away. Expiry costs health and forces a new desk.
+        for (const playerIndex of [0, 1] as const) {
+          if (!gameState.isRunning) break;
+          const player = playerIndex === 0 ? "p1" : "p2";
+          if (!gameState[player].activeTicket) continue;
+
+          ticketDeadlineRef.current[playerIndex] = Math.max(
+            0,
+            ticketDeadlineRef.current[playerIndex] - dt,
+          );
+          if (ticketDeadlineRef.current[playerIndex] > 0) continue;
+          if (!expireTicket(player)) continue;
+
+          updateConfirmed(playerIndex, false);
+          flash(player, "wrong");
+          if (gameState.isRunning) rotatePlayerDesk(playerIndex);
+        }
+
         if (confirmedRef.current[0] && !p1IsAtTarget) {
           updateConfirmed(0, false);
         }
@@ -881,7 +973,16 @@ export function CoopGame() {
         }
       }
 
-      if (gameState.isRunning) setState(snap(gameState));
+      if (gameState.isRunning) {
+        setState(snap(gameState));
+        setDeadlineSnapshot({
+          travel: [
+            Math.ceil(travelDeadlineRef.current[0]),
+            Math.ceil(travelDeadlineRef.current[1]),
+          ],
+          ticket: [ticketDeadlineRef.current[0], ticketDeadlineRef.current[1]],
+        });
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -913,7 +1014,10 @@ export function CoopGame() {
         if (playerStations[0]?.id !== targetStationIdsRef.current[0]) return;
         e.preventDefault();
         updateConfirmed(0, true);
-        gameState.p1.activeTicket ??= drawTicket(gameState.phase);
+        if (!gameState.p1.activeTicket) {
+          gameState.p1.activeTicket = drawTicket(gameState.phase);
+          ticketDeadlineRef.current[0] = TICKET_DECISION_SECONDS;
+        }
         return;
       }
 
@@ -927,7 +1031,10 @@ export function CoopGame() {
         if (playerStations[1]?.id !== targetStationIdsRef.current[1]) return;
         e.preventDefault();
         updateConfirmed(1, true);
-        gameState.p2.activeTicket ??= drawTicket(gameState.phase);
+        if (!gameState.p2.activeTicket) {
+          gameState.p2.activeTicket = drawTicket(gameState.phase);
+          ticketDeadlineRef.current[1] = TICKET_DECISION_SECONDS;
+        }
         return;
       }
 
@@ -1058,7 +1165,8 @@ export function CoopGame() {
               atStation={p1AtTarget}
               stationLabel={p1StationLabel}
               targetStation={STATIONS.find((station) => station.id === targetStationIds[0]) ?? null}
-              travelSecondsLeft={Math.ceil(travelDeadlineRef.current[0])}
+              travelSecondsLeft={deadlineSnapshot.travel[0]}
+              ticketSecondsLeft={deadlineSnapshot.ticket[0]}
               confirmed={p1Confirmed}
             />
             <PlayerHUD
@@ -1075,7 +1183,8 @@ export function CoopGame() {
               atStation={p2AtTarget}
               stationLabel={p2StationLabel}
               targetStation={STATIONS.find((station) => station.id === targetStationIds[1]) ?? null}
-              travelSecondsLeft={Math.ceil(travelDeadlineRef.current[1])}
+              travelSecondsLeft={deadlineSnapshot.travel[1]}
+              ticketSecondsLeft={deadlineSnapshot.ticket[1]}
               confirmed={p2Confirmed}
             />
           </div>
