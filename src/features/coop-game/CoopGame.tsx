@@ -5,6 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { WorldContents } from "./Scene";
 import { SplitScreenRenderer } from "./SplitScreenRenderer";
 import { keys, stepGame } from "./state";
+import { useAmbientMusic } from "./useAmbientMusic";
 
 const TRACKED_KEYS = new Set([
   "w", "a", "s", "d",
@@ -40,6 +41,9 @@ function ViewLabel({ color, label, keysHint, side }: {
 }
 
 export function CoopGame() {
+  // Ambient office music loop (armed on first user gesture).
+  useAmbientMusic();
+
   // Input: shared key set (P1 = WASD, P2 = arrows).
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
