@@ -1,0 +1,15 @@
+import { chromium } from "@playwright/test";
+const b = await chromium.launch({ args:["--use-gl=angle","--use-angle=gl","--ignore-gpu-blocklist"] });
+const p = await b.newPage({ viewport:{width:1400,height:720} });
+const errs=[]; p.on("pageerror",e=>errs.push("[pageerror] "+e.message.split("\n")[0]));
+await p.goto("http://localhost:3000/game",{waitUntil:"networkidle",timeout:60000}).catch(e=>errs.push("[goto]"+e.message));
+await p.waitForTimeout(6000);
+await p.screenshot({path:"_g_start.png"});
+await p.keyboard.down("d"); await p.keyboard.down("ArrowUp");
+await p.waitForTimeout(1400);
+await p.keyboard.up("d"); await p.keyboard.up("ArrowUp");
+await p.waitForTimeout(600);
+await p.screenshot({path:"_g_move.png"});
+console.log("canvas:", await p.locator("canvas").count());
+console.log("errors:", errs.join(" | ")||"(none)");
+await b.close();

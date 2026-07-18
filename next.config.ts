@@ -57,6 +57,12 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const nextConfig: NextConfig = {
+  // StrictMode's dev-only mount/unmount/remount kills the WebGL context:
+  // @react-three/fiber 9.5.0 schedules gl.forceContextLoss() 500ms after the
+  // throwaway unmount, and the remounted Canvas shares that same context —
+  // every R3F page goes permanently black ("THREE.WebGLRenderer: Context
+  // Lost"). Re-enable only after fiber cancels that disposal on remount.
+  reactStrictMode: false,
   turbopack: {
     root: path.resolve(__dirname),
   },

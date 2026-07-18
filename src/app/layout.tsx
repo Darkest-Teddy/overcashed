@@ -3,8 +3,9 @@ import { Bebas_Neue, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Claw3D",
-  description: "Focused operator studio for the OpenClaw gateway.",
+  title: "Overcashed",
+  description:
+    "Overcooked-style co-op office game — save money and time before the clock runs out.",
 };
 
 const display = Bebas_Neue({
