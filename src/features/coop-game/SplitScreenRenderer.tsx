@@ -42,9 +42,11 @@ export function SplitScreenRenderer() {
 
   // priority 1 → R3F stops auto-rendering; we drive the render loop here.
   useFrame(() => {
-    const pr = gl.getPixelRatio();
-    const w = Math.floor(size.width * pr);
-    const h = Math.floor(size.height * pr);
+    // setViewport/setScissor take CSS pixels — three.js applies pixelRatio
+    // itself. Passing device pixels double-scales on retina (right half lands
+    // entirely off-canvas and the left half paints the whole screen zoomed).
+    const w = size.width;
+    const h = size.height;
     const halfW = Math.floor(w / 2);
     const aspect = halfW / h;
 
@@ -59,8 +61,9 @@ export function SplitScreenRenderer() {
         cam.updateProjectionMatrix();
       }
       const x = i === 0 ? 0 : halfW;
-      gl.setViewport(x, 0, halfW, h);
-      gl.setScissor(x, 0, halfW, h);
+      const vw = i === 0 ? halfW : w - halfW;
+      gl.setViewport(x, 0, vw, h);
+      gl.setScissor(x, 0, vw, h);
       gl.render(scene, cam);
     }
 
