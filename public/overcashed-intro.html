@@ -63,14 +63,15 @@
     opacity: 0;
   }
 
-  /* blueprint props (logo assets) */
+  /* blueprint props (logo assets) — stroke width is set per-asset in JS
+     (width/scale) instead of vector-effect:non-scaling-stroke, because
+     Chrome dashes non-scaling strokes in screen space, which desyncs the
+     draw-on animation from getTotalLength() and leaves gaps. */
   .asset-line {
     fill: none;
     stroke: var(--stroke);
-    stroke-width: 1.4;
     stroke-linejoin: round;
     stroke-linecap: round;
-    vector-effect: non-scaling-stroke;
   }
   .asset-fill { stroke: none; }
 </style>
@@ -346,11 +347,14 @@
         const attrs = { class: "asset-line", d: isObj ? entry.d : entry };
         const el = mk(grp, "path", attrs);
         if (isObj && entry.stroke) el.style.stroke = entry.stroke;
-        if (isObj && entry.w) el.style.strokeWidth = entry.w;
+        // Compensate the group scale so strokes render ~constant on screen
+        // while dashes stay in user units (keeps draw-on math exact).
+        const baseW = isObj && entry.w ? entry.w : 1.4;
+        el.style.strokeWidth = (baseW / it.s).toFixed(3);
         const len = el.getTotalLength();
         el.style.strokeDasharray = len;
         el.style.strokeDashoffset = len;
-        assetLineEls.push({ el, len, t0: it.t0 + i * 0.09, dur: 0.55 });
+        assetLineEls.push({ el, len, t0: it.t0 + i * 0.09, dur: 0.55, done: false });
       });
     }
   }
@@ -588,7 +592,20 @@
     // blueprint props sketch themselves in around the word
     for (const a of assetLineEls) {
       const ap = easeDraw(clamp01((time - a.t0) / a.dur));
-      a.el.style.strokeDashoffset = a.len * (1 - ap);
+      if (ap >= 1) {
+        // fully drawn — drop the dash entirely so no float residue shows
+        if (!a.done) {
+          a.el.style.strokeDasharray = "none";
+          a.el.style.strokeDashoffset = 0;
+          a.done = true;
+        }
+      } else {
+        if (a.done) {
+          a.el.style.strokeDasharray = a.len;
+          a.done = false;
+        }
+        a.el.style.strokeDashoffset = a.len * (1 - ap);
+      }
     }
     // ...and flood with color as the liquid crests
     const inkOn = smooth(3.35, 4.35, time);
@@ -664,7 +681,10 @@
       outlineEl.style.opacity = 0.4;
       blackBody.setAttribute("d", surfacePath(geom.capTop, 0, 0, geom.x0-2, geom.x1+2, geom.bottom + geom.AMP, geom.wavelength));
       outlineThick.style.opacity = 1;
-      for (const a of assetLineEls) a.el.style.strokeDashoffset = 0;
+      for (const a of assetLineEls) {
+        a.el.style.strokeDasharray = "none";
+        a.el.style.strokeDashoffset = 0;
+      }
       for (const f of assetFillEls) f.el.style.opacity = f.op;
       wordGroup.style.transform = "rotate(" + TILT + "deg)";
       overlay.style.transition = "opacity .6s ease";

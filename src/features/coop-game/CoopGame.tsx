@@ -114,6 +114,26 @@ const TRACKED_KEYS = new Set([
 type TargetStationIds = [string | null, string | null];
 const DESK_TRAVEL_SECONDS = 10;
 
+// ─── Ramp-style HUD tokens ──────────────────────────────────────────────────
+// Frosted white surfaces, near-black ink, acid-lime accent — kept translucent
+// so the world stays readable underneath.
+const HUD_FONT =
+  "var(--font-sans, 'IBM Plex Sans'), -apple-system, 'Helvetica Neue', Arial, sans-serif";
+const HUD = {
+  surface: "rgba(252,252,250,0.78)",
+  surfaceFaint: "rgba(252,252,250,0.58)",
+  border: "1px solid rgba(27,27,24,0.10)",
+  shadow: "0 8px 24px rgba(27,27,24,0.12)",
+  blur: "blur(14px) saturate(1.15)",
+  ink: "#1B1B18",
+  inkSoft: "rgba(27,27,24,0.60)",
+  lime: "#E4F222",
+  amber: "#FFD84D",
+  coral: "#FF8A7A",
+  green: "#2E7D4F",
+  red: "#D92D20",
+};
+
 function pickStationId(excludedIds: Set<string>): string {
   const candidates = STATIONS.filter((station) => !excludedIds.has(station.id));
   const pool = candidates.length > 0 ? candidates : STATIONS;
@@ -124,78 +144,80 @@ function pickStationId(excludedIds: Set<string>): string {
 
 function TopBar({ health, time, phase }: { health: number; time: number; phase: number }) {
   const low = health <= 25;
+  const phaseBg = phase === 3 ? HUD.coral : phase === 2 ? HUD.amber : HUD.lime;
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 40,
-        padding: "12px 32px",
-        background: "rgba(0,0,0,0.75)",
-        backdropFilter: "blur(8px)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
+    <div style={{ display: "flex", justifyContent: "center", padding: "12px 16px" }}>
       <div
         style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: 2,
-          textTransform: "uppercase",
-          color: phase === 3 ? "#ef4444" : phase === 2 ? "#fbbf24" : "#4ade80",
-          minWidth: 80,
+          display: "flex",
+          alignItems: "center",
+          gap: 22,
+          width: "min(680px, 92%)",
+          padding: "10px 18px",
+          background: HUD.surface,
+          border: HUD.border,
+          borderRadius: 14,
+          boxShadow: HUD.shadow,
+          backdropFilter: HUD.blur,
+          fontFamily: HUD_FONT,
+          color: HUD.ink,
         }}
       >
-        PHASE {phase}
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, maxWidth: 400 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.6, minWidth: 52 }}>HEALTH</span>
         <div
           style={{
-            flex: 1,
-            height: 18,
-            borderRadius: 9,
-            background: "rgba(255,255,255,0.08)",
-            overflow: "hidden",
-            border: low ? "1px solid #ef4444" : "1px solid rgba(255,255,255,0.1)",
-            animation: low ? "pulse-health 0.6s ease-in-out infinite" : undefined,
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "4px 12px",
+            borderRadius: 999,
+            background: phaseBg,
+            color: HUD.ink,
+            whiteSpace: "nowrap",
           }}
         >
+          Phase {phase}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: HUD.inkSoft }}>Health</span>
           <div
             style={{
-              height: "100%",
-              width: `${health}%`,
-              borderRadius: 9,
-              background:
-                health > 50
-                  ? "linear-gradient(90deg, #4ade80, #22c55e)"
-                  : health > 25
-                  ? "linear-gradient(90deg, #fbbf24, #f59e0b)"
-                  : "linear-gradient(90deg, #ef4444, #dc2626)",
-              transition: "width 0.3s ease-out",
+              flex: 1,
+              height: 8,
+              borderRadius: 999,
+              background: "rgba(27,27,24,0.10)",
+              overflow: "hidden",
+              animation: low ? "pulse-health 0.6s ease-in-out infinite" : undefined,
             }}
-          />
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${health}%`,
+                borderRadius: 999,
+                background: health > 50 ? HUD.green : health > 25 ? "#F5A623" : HUD.red,
+                transition: "width 0.3s ease-out",
+              }}
+            />
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 600, minWidth: 30, textAlign: "right" }}>
+            {Math.round(health)}
+          </span>
         </div>
-        <span style={{ fontSize: 14, fontWeight: 800, minWidth: 36, textAlign: "right" }}>
-          {Math.round(health)}
-        </span>
-      </div>
 
-      <div
-        style={{
-          fontSize: 44,
-          fontWeight: 900,
-          fontVariantNumeric: "tabular-nums",
-          color: time <= 45 ? "#ef4444" : "#fff",
-          textShadow: time <= 45 ? "0 0 18px rgba(239,68,68,0.7)" : "none",
-          animation: time <= 10 ? "pulse-health 0.55s ease-in-out infinite" : undefined,
-          minWidth: 120,
-          textAlign: "center",
-        }}
-      >
-        {fmtTime(time)}
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 700,
+            fontVariantNumeric: "tabular-nums",
+            letterSpacing: 0.3,
+            color: time <= 45 ? HUD.red : HUD.ink,
+            animation: time <= 10 ? "pulse-health 0.55s ease-in-out infinite" : undefined,
+            minWidth: 74,
+            textAlign: "right",
+          }}
+        >
+          {fmtTime(time)}
+        </div>
       </div>
     </div>
   );
@@ -256,42 +278,68 @@ function DeskArrow({
       </div>
       <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontFamily: HUD_FONT,
           fontSize: 14,
-          fontWeight: 800,
-          letterSpacing: 1,
-          color: "#fff",
-          textTransform: "uppercase",
-          textAlign: "center",
-          textShadow: "0 1px 2px rgba(0,0,0,0.9)",
-          background: "rgba(8,10,16,0.9)",
-          border: "1px solid rgba(255,255,255,0.24)",
-          borderRadius: 999,
-          padding: "8px 15px",
-          boxShadow: "0 5px 18px rgba(0,0,0,0.45)",
-          backdropFilter: "blur(6px)",
+          fontWeight: 500,
+          color: HUD.inkSoft,
+          background: HUD.surface,
+          border: HUD.border,
+          borderRadius: 12,
+          padding: "7px 9px 7px 14px",
+          boxShadow: HUD.shadow,
+          backdropFilter: HUD.blur,
         }}
       >
-        <span style={{ opacity: 0.72 }}>GO TO</span>{" "}
-        <span style={{ color: "#facc15" }}>{targetStation.label}</span>
+        Go to
+        <span
+          style={{
+            background: HUD.lime,
+            color: HUD.ink,
+            borderRadius: 8,
+            padding: "3px 10px",
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
+          {targetStation.label}
+        </span>
       </div>
-      <div style={{ fontSize: 11, opacity: 0.5 }}>
-        Follow your {color === "#4f9dff" ? "blue" : "orange"} marker ({Math.round(distance)} units)
+      <div
+        style={{
+          fontFamily: HUD_FONT,
+          fontSize: 11,
+          fontWeight: 500,
+          color: HUD.ink,
+          opacity: 0.75,
+          background: HUD.surfaceFaint,
+          border: HUD.border,
+          borderRadius: 999,
+          padding: "3px 11px",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        Follow your {color === "#4f9dff" ? "blue" : "orange"} marker · {Math.round(distance)} units
       </div>
       <div
         style={{
           marginTop: 2,
-          padding: "6px 12px",
+          padding: "5px 13px",
           borderRadius: 999,
-          background: travelSecondsLeft <= 3 ? "rgba(239,68,68,0.2)" : "rgba(0,0,0,0.65)",
-          border: `1px solid ${travelSecondsLeft <= 3 ? "#ef4444" : "rgba(255,255,255,0.14)"}`,
-          color: travelSecondsLeft <= 3 ? "#f87171" : "#fff",
+          fontFamily: HUD_FONT,
+          fontVariantNumeric: "tabular-nums",
+          background: travelSecondsLeft <= 3 ? "rgba(217,45,32,0.14)" : HUD.surfaceFaint,
+          border: travelSecondsLeft <= 3 ? "1px solid rgba(217,45,32,0.55)" : HUD.border,
+          color: travelSecondsLeft <= 3 ? HUD.red : HUD.ink,
           fontSize: 12,
-          fontWeight: 900,
-          letterSpacing: 1,
+          fontWeight: 600,
+          backdropFilter: "blur(8px)",
           animation: travelSecondsLeft <= 3 ? "pulse-red 0.8s ease-in-out infinite" : undefined,
         }}
       >
-        REACH DESK IN {travelSecondsLeft}s
+        Reach desk in {travelSecondsLeft}s
       </div>
     </div>
   );
@@ -506,16 +554,18 @@ function PlayerHUD({
         ) : roaming ? (
           <div
             style={{
-              background: "rgba(0,0,0,0.7)",
-              backdropFilter: "blur(4px)",
-              borderRadius: 10,
-              padding: "10px 20px",
+              background: HUD.surfaceFaint,
+              backdropFilter: "blur(10px)",
+              borderRadius: 999,
+              padding: "7px 16px",
               textAlign: "center",
-              border: "1px solid rgba(251,191,36,0.3)",
+              border: HUD.border,
+              boxShadow: "0 4px 14px rgba(27,27,24,0.10)",
+              fontFamily: HUD_FONT,
             }}
           >
-            <div style={{ fontSize: 11, opacity: 0.5 }}>
-              Move: <span style={{ fontWeight: 700, opacity: 1, color: "#fff" }}>{moveKeys}</span>
+            <div style={{ fontSize: 11.5, fontWeight: 500, color: HUD.inkSoft }}>
+              Move <span style={{ fontWeight: 700, color: HUD.ink }}>{moveKeys}</span>
             </div>
           </div>
         ) : null}
