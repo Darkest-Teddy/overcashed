@@ -61,8 +61,8 @@ export const buildColliders = (furniture: FurnitureItem[]): CanvasAabb[] => {
 export const PLAYER_CANVAS_RADIUS = AGENT_RADIUS; // 20 canvas units
 export const CANVAS_BOUNDS = { w: CANVAS_W, h: CANVAS_H };
 
-// Open-floor spawn points in the main office area (canvas coords).
+// Open-floor spawn points — in the corridor between desk rows, away from stations.
 export const SPAWN_POINTS: Array<{ x: number; y: number; facing: number }> = [
-  { x: 360, y: 320, facing: Math.PI / 2 },
-  { x: 520, y: 320, facing: Math.PI / 2 },
+  { x: 360, y: 420, facing: Math.PI / 2 },
+  { x: 560, y: 420, facing: Math.PI / 2 },
 ];
