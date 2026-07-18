@@ -55,8 +55,52 @@ export const playersRef: RefObject<RenderAgent[]> = { current: players };
 
 export const keys = new Set<string>();
 
-const P1_KEYS = { up: "w", down: "s", left: "a", right: "d" };
-const P2_KEYS = { up: "arrowup", down: "arrowdown", left: "arrowleft", right: "arrowright" };
+// ─── Review Stations ────────────────────────────────────────────────────────
+// Desk cubicle positions from furnitureDefaults.ts — players walk to a desk
+// to get a ticket. Each station is the center of a desk_cubicle.
+
+export type Station = {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+};
+
+export const STATIONS: Station[] = [
+  { id: "desk_0", x: 140, y: 320, label: "Desk A1" },
+  { id: "desk_1", x: 340, y: 320, label: "Desk A2" },
+  { id: "desk_2", x: 540, y: 320, label: "Desk A3" },
+  { id: "desk_3", x: 740, y: 320, label: "Desk A4" },
+  { id: "desk_4", x: 140, y: 520, label: "Desk B1" },
+  { id: "desk_5", x: 340, y: 520, label: "Desk B2" },
+  { id: "desk_6", x: 540, y: 520, label: "Desk B3" },
+  { id: "desk_7", x: 740, y: 520, label: "Desk B4" },
+];
+
+const STATION_RADIUS = 70; // canvas units — how close you need to be
+
+/** Returns the station a player is near, or null if roaming. */
+export function nearestStation(px: number, py: number): Station | null {
+  for (const s of STATIONS) {
+    const d = Math.hypot(px - s.x, py - s.y);
+    if (d <= STATION_RADIUS) return s;
+  }
+  return null;
+}
+
+/** Per-player station state — read by the UI each frame. */
+export const playerStations: [Station | null, Station | null] = [null, null];
+
+// ─── Movement ───────────────────────────────────────────────────────────────
+// When AT a station: A/D and Left/Right are ticket actions (handled in CoopGame).
+//   Movement is restricted to W/S (P1) and Up/Down (P2) so the player
+//   can walk away from the station.
+// When ROAMING: full WASD (P1) and full arrows (P2).
+
+const P1_KEYS_FULL = { up: "w", down: "s", left: "a", right: "d" };
+const P1_KEYS_STATION = { up: "w", down: "s", left: "__none__", right: "__none__" };
+const P2_KEYS_FULL = { up: "arrowup", down: "arrowdown", left: "arrowleft", right: "arrowright" };
+const P2_KEYS_STATION = { up: "arrowup", down: "arrowdown", left: "__none__", right: "__none__" };
 
 const readAxis = (map: { up: string; down: string; left: string; right: string }) => {
   let dx = 0;
@@ -80,7 +124,6 @@ const resolveAabb = (px: number, py: number, box: CanvasAabb): [number, number] 
     const push = R - d;
     return [px + (dx / d) * push, py + (dy / d) * push];
   }
-  // Center inside the box → push out shallowest axis.
   const toLeft = px - box.minX;
   const toRight = box.maxX - px;
   const toTop = py - box.minY;
@@ -95,7 +138,13 @@ const resolveAabb = (px: number, py: number, box: CanvasAabb): [number, number] 
 const clamp = (v: number, max: number) => Math.max(R, Math.min(max - R, v));
 
 export const stepGame = (dt: number) => {
-  const maps = [P1_KEYS, P2_KEYS];
+  const p1AtStation = playerStations[0] !== null;
+  const p2AtStation = playerStations[1] !== null;
+
+  const maps = [
+    p1AtStation ? P1_KEYS_STATION : P1_KEYS_FULL,
+    p2AtStation ? P2_KEYS_STATION : P2_KEYS_FULL,
+  ];
 
   for (let i = 0; i < players.length; i++) {
     const p = players[i];
@@ -106,7 +155,6 @@ export const stepGame = (dt: number) => {
       const ny = dy / len;
       p.x = clamp(p.x + nx * SPEED * dt, CANVAS_BOUNDS.w);
       p.y = clamp(p.y + ny * SPEED * dt, CANVAS_BOUNDS.h);
-      // Facing: AgentModel rotates around Y; +x/+y map into world via toWorld.
       p.facing = Math.atan2(nx, ny);
       p.state = "walking";
       p.frame += dt * 22;
@@ -118,6 +166,9 @@ export const stepGame = (dt: number) => {
     for (const box of COLLIDERS) {
       [p.x, p.y] = resolveAabb(p.x, p.y, box);
     }
+
+    // Update station proximity
+    playerStations[i] = nearestStation(p.x, p.y);
   }
 
   // Player-vs-player soft separation.
