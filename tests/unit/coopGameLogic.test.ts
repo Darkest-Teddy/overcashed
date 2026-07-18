@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DESK_MISS_HEALTH_PENALTY,
+  GAME_DURATION_SECONDS,
+  TICKET_EXPIRY_HEALTH_PENALTY,
   drawTicket,
+  expireTicket,
   gameState,
   initGame,
   missDeskDeadline,
@@ -25,6 +28,20 @@ describe("co-op game rotation rules", () => {
     expect(submitAnswer("p1", ticket.correct_answer)).toBe("correct");
     expect(gameState.p1.activeTicket).toBeNull();
     expect(gameState.p1.score).toBeGreaterThan(0);
+  });
+
+  it("starts a one-minute round", () => {
+    expect(GAME_DURATION_SECONDS).toBe(60);
+    expect(gameState.sharedTime).toBe(60);
+  });
+
+  it("expires an unanswered ticket and reduces shared health", () => {
+    gameState.p1.activeTicket = drawTicket(1);
+
+    expect(expireTicket("p1")).toBe(true);
+    expect(gameState.p1.activeTicket).toBeNull();
+    expect(gameState.sharedHealth).toBe(100 - TICKET_EXPIRY_HEALTH_PENALTY);
+    expect(gameState.expiredTickets).toEqual({ p1: 1, p2: 0 });
   });
 
   it("reduces shared health when a player misses a desk deadline", () => {

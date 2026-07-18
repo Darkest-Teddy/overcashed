@@ -45,6 +45,7 @@ export type GameState = {
   wrongDecisions: WrongDecision[];
   totalDollarImpact: number;
   missedDeskDeadlines: { p1: number; p2: number };
+  expiredTickets: { p1: number; p2: number };
 };
 
 // ─── Hardcoded ticket pool ──────────────────────────────────────────────────
@@ -253,6 +254,9 @@ const HEALTH_PENALTY: Record<string, number> = { easy: 15, medium: 20, hard: 30 
 const SCORE_REWARD: Record<string, number> = { easy: 100, medium: 200, hard: 350 };
 const PHASE_THRESHOLDS = [0, 5, 12]; // phase 2 at 5 correct, phase 3 at 12
 export const DESK_MISS_HEALTH_PENALTY = 10;
+export const TICKET_EXPIRY_HEALTH_PENALTY = 15;
+export const TICKET_DECISION_SECONDS = 10;
+export const GAME_DURATION_SECONDS = 60;
 
 let ticketQueue: Ticket[] = [];
 
@@ -297,7 +301,7 @@ const notify = () => { for (const fn of listeners) fn(); };
 
 export const gameState: GameState = {
   sharedHealth: 100,
-  sharedTime: 180,
+  sharedTime: GAME_DURATION_SECONDS,
   isRunning: false,
   isOver: false,
   didWin: false,
@@ -307,6 +311,7 @@ export const gameState: GameState = {
   wrongDecisions: [],
   totalDollarImpact: 0,
   missedDeskDeadlines: { p1: 0, p2: 0 },
+  expiredTickets: { p1: 0, p2: 0 },
 };
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -314,7 +319,7 @@ export const gameState: GameState = {
 export function initGame() {
   ticketQueue = shufflePool();
   gameState.sharedHealth = 100;
-  gameState.sharedTime = 180;
+  gameState.sharedTime = GAME_DURATION_SECONDS;
   gameState.isRunning = true;
   gameState.isOver = false;
   gameState.didWin = false;
@@ -324,12 +329,13 @@ export function initGame() {
   gameState.wrongDecisions = [];
   gameState.totalDollarImpact = 0;
   gameState.missedDeskDeadlines = { p1: 0, p2: 0 };
+  gameState.expiredTickets = { p1: 0, p2: 0 };
   notify();
 }
 
 export function resetGame() {
   gameState.sharedHealth = 100;
-  gameState.sharedTime = 180;
+  gameState.sharedTime = GAME_DURATION_SECONDS;
   gameState.isRunning = false;
   gameState.isOver = false;
   gameState.didWin = false;
@@ -339,6 +345,7 @@ export function resetGame() {
   gameState.wrongDecisions = [];
   gameState.totalDollarImpact = 0;
   gameState.missedDeskDeadlines = { p1: 0, p2: 0 };
+  gameState.expiredTickets = { p1: 0, p2: 0 };
   notify();
 }
 
@@ -359,6 +366,29 @@ export function missDeskDeadline(player: "p1" | "p2") {
   }
 
   notify();
+}
+
+/** Expire an unanswered ticket and apply the automatic health penalty. */
+export function expireTicket(player: "p1" | "p2"): boolean {
+  if (!gameState.isRunning || gameState.isOver || !gameState[player].activeTicket) {
+    return false;
+  }
+
+  gameState[player].activeTicket = null;
+  gameState.expiredTickets[player] += 1;
+  gameState.sharedHealth = Math.max(
+    0,
+    gameState.sharedHealth - TICKET_EXPIRY_HEALTH_PENALTY,
+  );
+
+  if (gameState.sharedHealth <= 0) {
+    gameState.isRunning = false;
+    gameState.isOver = true;
+    gameState.didWin = false;
+  }
+
+  notify();
+  return true;
 }
 
 /** Returns "correct" | "wrong" so the UI can flash. */
